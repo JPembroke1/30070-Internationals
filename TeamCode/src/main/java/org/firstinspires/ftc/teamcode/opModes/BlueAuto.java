@@ -1,4 +1,4 @@
-package org.firstinspires.ftc.teamcode.opModes;
+/*package org.firstinspires.ftc.teamcode.opModes;
 
 import static org.firstinspires.ftc.teamcode.opModes.InternationalsOfTheTeleops.D;
 import static org.firstinspires.ftc.teamcode.opModes.InternationalsOfTheTeleops.I;
@@ -15,6 +15,7 @@ import com.pedropathing.geometry.Pose;
 import com.pedropathing.paths.PathBuilder;
 import com.pedropathing.paths.PathChain;
 import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
+import com.qualcomm.robotcore.eventloop.opmode.Disabled;
 import com.qualcomm.robotcore.eventloop.opmode.OpMode;
 import com.qualcomm.robotcore.hardware.CRServo;
 import com.qualcomm.robotcore.hardware.DcMotor;
@@ -27,6 +28,7 @@ import com.qualcomm.robotcore.eventloop.opmode.OpMode;
 
 import org.firstinspires.ftc.teamcode.pedroPathing.Constants;
 
+@Disabled
 @Autonomous(name = "blue side goal")
 public class BlueAuto extends OpMode {
 
@@ -153,4 +155,4 @@ public class BlueAuto extends OpMode {
         outtakeMotor1.setPower(response);
         outtakeMotor2.setPower(response);
     }
-}
+} */

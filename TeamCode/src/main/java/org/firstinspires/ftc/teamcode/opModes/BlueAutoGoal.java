@@ -1,4 +1,4 @@
-package org.firstinspires.ftc.teamcode.opModes;
+/*package org.firstinspires.ftc.teamcode.opModes;
 
 import static org.firstinspires.ftc.teamcode.opModes.InternationalsOfTheTeleops.D;
 import static org.firstinspires.ftc.teamcode.opModes.InternationalsOfTheTeleops.I;
@@ -154,3 +154,4 @@ public class BlueAutoGoal extends OpMode {
         outtake1.setPower(response);
     }
 }
+*/

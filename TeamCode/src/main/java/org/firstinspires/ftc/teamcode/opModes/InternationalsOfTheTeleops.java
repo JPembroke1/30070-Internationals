@@ -31,6 +31,7 @@ package org.firstinspires.ftc.teamcode.opModes;
 
 import com.arcrobotics.ftclib.controller.PIDController;
 import com.bylazar.configurables.annotations.Configurable;
+import com.pedropathing.drivetrain.Drivetrain;
 import com.pedropathing.geometry.Pose;
 import com.qualcomm.hardware.gobilda.GoBildaPinpointDriver;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
@@ -44,6 +45,9 @@ import com.qualcomm.robotcore.util.ElapsedTime;
 import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
 import org.firstinspires.ftc.robotcore.external.navigation.DistanceUnit;
 import org.firstinspires.ftc.robotcore.external.navigation.Pose2D;
+import org.firstinspires.ftc.teamcode.opModes.subClasses.Intake;
+import org.firstinspires.ftc.teamcode.opModes.subClasses.Outtake;
+import org.firstinspires.ftc.teamcode.opModes.subClasses.RobotHardware;
 
 /*
  * This file contains an example of a Linear "OpMode".
@@ -75,35 +79,33 @@ import org.firstinspires.ftc.robotcore.external.navigation.Pose2D;
 @Configurable
 @TeleOp(name="InternationalTelopsOfTheAwesomeness", group="Linear OpMode")
 public class InternationalsOfTheTeleops extends LinearOpMode {
-
     private static double TARGET_SPEED = 2000;
     private static double servoDir = 0.5;
     private static double hoodPos = 0.5;
     private static double blockPos = 0.2;
 
-    public static double target = 0;
-    public static double currentTPS = 0;
     public static double originalP = 0.002;
-    public static double P = 20;
-    public static double I = 0.0;
-    public static double D = 0;
-    public static double F = 20;
     public static double kP = 0.3;
     public static double mulitplier = 0.01;
     public static double multiplierAmount = 0;
     public static double offsetX = 0;
     public static double offsetY = 0;
     public static boolean goalAimedAt = false; //False = Blue, True = Red
-    public static double formulaResult = 2.714286;
-    public static double yIntercept = 1199.999933;
+    public static double formulaResult = 10.612245;
+    public static double yIntercept = -113.265313;
     public static double distance = 0;
-    public static double formulaResultHood = -0.00098;
-    public static double yInterceptHood = 0.594967;
+    public static double formulaResultHood = -0.002959;
+    public static double yInterceptHood = 0.552438;
     public static boolean ActivatedShoot = false;
 
     public static double shootTypeToggle = 2;
     public static double thresholdValue = 0;
     public static boolean shooting = false;
+    public static boolean linearRegressing = false;
+
+    RobotHardware robotHardware;
+    Intake intake;
+    Outtake outtake;
 
     // Declare OpMode members for each of the 4 motors.
     private ElapsedTime runtime = new ElapsedTime();
@@ -112,15 +114,9 @@ public class InternationalsOfTheTeleops extends LinearOpMode {
     private DcMotor frontRightDrive = null;
     private DcMotor backRightDrive = null;
 
-    private DcMotor intakeMotorFront = null;
-    private DcMotor intakeMotorBack = null;
-
     private Servo rotationalTurretServo = null;
-    private Servo hoodServo = null;
-    private Servo blockServo = null;
-    private DcMotorEx outtakeMotor1 = null;
-    private DcMotorEx outtakeMotor2 = null;
     public static Pose targetPose = new Pose(0, 144, 0);
+    public static double target = Outtake.target;
 
     GoBildaPinpointDriver pinpoint;
 
@@ -129,6 +125,7 @@ public class InternationalsOfTheTeleops extends LinearOpMode {
     @Override
     public void runOpMode() {
 
+
         // Initialize the hardware variables. Note that the strings used here must correspond
         // to the names assigned during the robot configuration step on the DS or RC devices.
         frontLeftDrive = hardwareMap.get(DcMotor.class, "frontLeft");
@@ -136,22 +133,10 @@ public class InternationalsOfTheTeleops extends LinearOpMode {
         frontRightDrive = hardwareMap.get(DcMotor.class, "frontRight");
         backRightDrive = hardwareMap.get(DcMotor.class, "backRight");
 
-        intakeMotorFront = hardwareMap.get(DcMotor.class, "intakeMotorFront");
-        intakeMotorBack = hardwareMap.get(DcMotor.class, "intakeMotorBack");
-
         rotationalTurretServo = hardwareMap.get(Servo.class, "rotationalTurretServo");
 
-        outtakeMotor1 = hardwareMap.get(DcMotorEx.class, "outtakeLeft");
-        outtakeMotor2 = hardwareMap.get(DcMotorEx.class, "outtakeRight");
+        robotHardware = new RobotHardware(hardwareMap);
 
-        hoodServo = hardwareMap.get(Servo.class, "hoodServo");
-        blockServo = hardwareMap.get(Servo.class, "blockServo");
-
-        outtakeMotor2.setDirection(DcMotorSimple.Direction.REVERSE);
-        outtakeMotor1.setDirection(DcMotorSimple.Direction.FORWARD);
-
-        intakeMotorFront.setDirection(DcMotorSimple.Direction.FORWARD);
-        intakeMotorBack.setDirection(DcMotorSimple.Direction.REVERSE);
 
         boolean aiming = false;
 
@@ -176,15 +161,18 @@ public class InternationalsOfTheTeleops extends LinearOpMode {
         backRightDrive.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
 
         rotationalTurretServo.setPosition(servoDir);
-        blockServo.setDirection(Servo.Direction.REVERSE);
-
-        controller = new PIDController(P, I, D);
 
         pinpoint = hardwareMap.get(GoBildaPinpointDriver.class, "pinpoint");
 
         pinpoint.resetPosAndIMU();
         pinpoint.recalibrateIMU();
         pinpoint.setPosition(new Pose2D(DistanceUnit.MM,0,0,AngleUnit.DEGREES, 0));
+
+        outtake = new Outtake();
+        intake = new Intake();
+
+        outtake.init(hardwareMap);
+        intake.init(hardwareMap);
 
 
 
@@ -198,7 +186,7 @@ public class InternationalsOfTheTeleops extends LinearOpMode {
         // run until the end of the match (driver presses STOP)
         while (opModeIsActive()) {
 
-            updatePIDF();
+            outtake.updatePIDF();
 
             double max;
 
@@ -228,19 +216,17 @@ public class InternationalsOfTheTeleops extends LinearOpMode {
             }
 
             if (gamepad1.right_bumper) {
-                intakeMotorFront.setPower(1);
-                intakeMotorBack.setPower(1);
+                intake.intake(1,1);
             } else if (gamepad1.right_trigger > 0.6) {
-                if (ActivatedShoot && currentTPS > 1500) {
-                    blockServo.setPosition(0.03);
-                    intakeMotorFront.setPower(0.7);
-                    intakeMotorBack.setPower(0.9);
+                if (ActivatedShoot && Outtake.currentTPS > 1500) {
+                    robotHardware.release();
+                    intake.intake(0.7, 0.9);
                 }
-            } else {
-                blockServo.setPosition(0.2);
-                intakeMotorFront.setPower(0);
-                intakeMotorBack.setPower(0);
-                //target = 850;
+            } else
+
+            {
+                robotHardware.block();
+                intake.intakeStop();
             }
 
             /*if (gamepad1.left_bumper) {
@@ -259,13 +245,26 @@ public class InternationalsOfTheTeleops extends LinearOpMode {
 
             if (gamepad1.cross) {
                 ActivatedShoot = true;
-                hoodPos = 0.3; //0.4
+                linearRegressing = false;
+
+                /*hoodPos = 0.3; //0.4
                 TARGET_SPEED = 850; //800
-                target = TARGET_SPEED;
+                target = TARGET_SPEED; */
+
+                outtake.startOuttaking(850);
+                robotHardware.mid_range();
+            } else if (gamepad1.square) {
+                ActivatedShoot = false;
+                linearRegressing = true;
+
             } else if (gamepad1.triangle) {
                 ActivatedShoot = false;
-                target = 0;
-                hoodPos = 0.5;
+                linearRegressing = false;
+                //target = 0;
+                //hoodPos = 0.5;
+
+                outtake.stopOuttake();
+                robotHardware.close_range();
             }
 
             if (servoDir < 0) {
@@ -294,14 +293,14 @@ public class InternationalsOfTheTeleops extends LinearOpMode {
                 shooting = !shooting;
             }
 
-            if (shooting == false && shootTypeToggle == 1) {
+            /*if (shooting == false && shootTypeToggle == 1) {
                 TARGET_SPEED = formulaResult * distance + yIntercept; //LINEAR REGRESSION
                 target = TARGET_SPEED;
                 hoodPos = formulaResultHood * distance + yInterceptHood;
             } else if (shooting == true && shootTypeToggle == 0) {
                 TARGET_SPEED = thresholdValue; //THRESH HOLDS
                 target = TARGET_SPEED;
-            }
+            } */
 
            /* if (gamepad1.triangle) {
                 target = 0;
@@ -444,7 +443,12 @@ public class InternationalsOfTheTeleops extends LinearOpMode {
                 }
             }
 
-            hoodServo.setPosition(hoodPos);
+            if (linearRegressing) {
+                outtake.linearRegression(formulaResult, distance, yIntercept);
+                robotHardware.linearHoodRegression(formulaResultHood, distance, yInterceptHood);
+            }
+
+            //hoodServo.setPosition(hoodPos);
 
             double robotXD = pinpoint.getPosX(DistanceUnit.CM);
             double robotYD = pinpoint.getPosY(DistanceUnit.CM);
@@ -465,8 +469,8 @@ public class InternationalsOfTheTeleops extends LinearOpMode {
 
             telemetry.addData("TurretRotationServo", "ServoDirection: " + rotationalTurretServo.getPosition());
             telemetry.addData("ServoDir", servoDir);
-            telemetry.addData("response", controller.calculate(outtakeMotor1.getVelocity(), target));
-            telemetry.addData("blockServo", blockServo.getPosition());
+            //telemetry.addData("response", controller.calculate(outtake.outtakeMotor1.getVelocity(), target));
+            telemetry.addData("blockServo", robotHardware.blockServo.getPosition());
             telemetry.addData("TurretHeading", Math.toRadians(rotationalTurretServo.getPosition() * 170));
             telemetry.addData("targetPose", targetPose);
             telemetry.addData("GoalAim", goalAimedAt);
@@ -474,9 +478,9 @@ public class InternationalsOfTheTeleops extends LinearOpMode {
             telemetry.addData("ShootToggleType: ", shootTypeToggle);
             telemetry.addData("hoodAngle", hoodPos);
             telemetry.addData("power", target);
-            telemetry.addData("P", P);
-            telemetry.addData("Velocity1", outtakeMotor1.getVelocity());
-            telemetry.addData("Velocity2", outtakeMotor2.getVelocity());
+            telemetry.addData("P", outtake.P);
+            telemetry.addData("Velocity1", outtake.outtakeMotor1.getVelocity());
+            telemetry.addData("Velocity2", outtake.outtakeMotor2.getVelocity());
             telemetry.update();
         }
     }
@@ -526,7 +530,10 @@ public class InternationalsOfTheTeleops extends LinearOpMode {
         //P = P + mulitplier;
     } */
 
-    private void updatePIDF() {
+/*    private void updatePIDF() {
+
+        DcMotorEx outtakeMotor1 = outtake.outtakeMotor1;
+        DcMotorEx outtakeMotor2 = outtake.outtakeMotor2;
 
         if (target == 0) {
             outtakeMotor1.setPower(0);
@@ -572,5 +579,5 @@ public class InternationalsOfTheTeleops extends LinearOpMode {
 
         outtakeMotor1.setPower(response);
         outtakeMotor2.setPower(response);
-    }
+    } */
 }
