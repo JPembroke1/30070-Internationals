@@ -48,7 +48,7 @@ public class Outtake {
 
     public void linearRegression(double formula, double distance, double yIntercept) {
 
-        target = formula * distance + yIntercept; //LINEAR REGRESSION
+        target = (formula * distance + yIntercept) / 2; //LINEAR REGRESSION
     }
 
     public void stopOuttake() {

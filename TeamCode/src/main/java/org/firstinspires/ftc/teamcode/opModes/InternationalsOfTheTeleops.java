@@ -32,6 +32,7 @@ package org.firstinspires.ftc.teamcode.opModes;
 import com.arcrobotics.ftclib.controller.PIDController;
 import com.bylazar.configurables.annotations.Configurable;
 import com.pedropathing.drivetrain.Drivetrain;
+import com.pedropathing.follower.Follower;
 import com.pedropathing.geometry.Pose;
 import com.qualcomm.hardware.gobilda.GoBildaPinpointDriver;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
@@ -48,6 +49,7 @@ import org.firstinspires.ftc.robotcore.external.navigation.Pose2D;
 import org.firstinspires.ftc.teamcode.opModes.subClasses.Intake;
 import org.firstinspires.ftc.teamcode.opModes.subClasses.Outtake;
 import org.firstinspires.ftc.teamcode.opModes.subClasses.RobotHardware;
+import org.firstinspires.ftc.teamcode.opModes.subClasses.Turret;
 
 /*
  * This file contains an example of a Linear "OpMode".
@@ -85,13 +87,12 @@ public class InternationalsOfTheTeleops extends LinearOpMode {
     private static double blockPos = 0.2;
 
     public static double originalP = 0.002;
-    public static double kP = 0.3;
     public static double mulitplier = 0.01;
     public static double multiplierAmount = 0;
     public static double offsetX = 0;
     public static double offsetY = 0;
     public static boolean goalAimedAt = false; //False = Blue, True = Red
-    public static double formulaResult = 10.612245;
+    public static double formulaResult = 8.612245;
     public static double yIntercept = -113.265313;
     public static double distance = 0;
     public static double formulaResultHood = -0.002959;
@@ -106,6 +107,7 @@ public class InternationalsOfTheTeleops extends LinearOpMode {
     RobotHardware robotHardware;
     Intake intake;
     Outtake outtake;
+    Turret turret;
 
     // Declare OpMode members for each of the 4 motors.
     private ElapsedTime runtime = new ElapsedTime();
@@ -113,9 +115,6 @@ public class InternationalsOfTheTeleops extends LinearOpMode {
     private DcMotor backLeftDrive = null;
     private DcMotor frontRightDrive = null;
     private DcMotor backRightDrive = null;
-
-    private Servo rotationalTurretServo = null;
-    public static Pose targetPose = new Pose(0, 144, 0);
     public static double target = Outtake.target;
 
     GoBildaPinpointDriver pinpoint;
@@ -132,8 +131,6 @@ public class InternationalsOfTheTeleops extends LinearOpMode {
         backLeftDrive = hardwareMap.get(DcMotor.class, "backLeft");
         frontRightDrive = hardwareMap.get(DcMotor.class, "frontRight");
         backRightDrive = hardwareMap.get(DcMotor.class, "backRight");
-
-        rotationalTurretServo = hardwareMap.get(Servo.class, "rotationalTurretServo");
 
         robotHardware = new RobotHardware(hardwareMap);
 
@@ -160,8 +157,6 @@ public class InternationalsOfTheTeleops extends LinearOpMode {
         frontRightDrive.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
         backRightDrive.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
 
-        rotationalTurretServo.setPosition(servoDir);
-
         pinpoint = hardwareMap.get(GoBildaPinpointDriver.class, "pinpoint");
 
         pinpoint.resetPosAndIMU();
@@ -170,9 +165,11 @@ public class InternationalsOfTheTeleops extends LinearOpMode {
 
         outtake = new Outtake();
         intake = new Intake();
+        turret = new Turret();
 
         outtake.init(hardwareMap);
         intake.init(hardwareMap);
+        turret.init(hardwareMap);
 
 
 
@@ -254,7 +251,7 @@ public class InternationalsOfTheTeleops extends LinearOpMode {
                 outtake.startOuttaking(850);
                 robotHardware.mid_range();
             } else if (gamepad1.square) {
-                ActivatedShoot = false;
+                ActivatedShoot = true;
                 linearRegressing = true;
 
             } else if (gamepad1.triangle) {
@@ -317,70 +314,13 @@ public class InternationalsOfTheTeleops extends LinearOpMode {
 
 
             if (aiming) {
-                //WORKING
-
-                double robotX = pinpoint.getPosX(DistanceUnit.CM);
-                double robotY = pinpoint.getPosY(DistanceUnit.CM);
-                double robotHeading = Math.toRadians(pinpoint.getHeading(AngleUnit.DEGREES));
-
-// Vector to target
-                double dx = targetPose.getX() + offsetX - robotX;
-                double dy = targetPose.getY() + offsetY - robotY;
-
-// World-space angle to target
-                double targetHeading = Math.atan2(-dy, dx);
-
-// Current turret angle (0 → 180 deg)
-                double turretAngle = Math.toRadians(rotationalTurretServo.getPosition() * 180.0);
-
-// Turret world direction
-                double turretWorldHeading = robotHeading + turretAngle;
-
-// Angle error
-                double error = targetHeading - turretWorldHeading;
-                error = Math.atan2(Math.sin(error), Math.cos(error)); // wrap
-
-// --- tuning ---
-                kP = 0.6;
-
-// Apply proportional correction
-                double newTurretAngle = turretAngle + error * kP;
-
-// Clamp to physical limits (0° → 180°)
-                newTurretAngle = Math.max(0, Math.min(Math.PI, newTurretAngle));
-
-// Convert back to servo position
-                double servoPosition = newTurretAngle / Math.PI;
-
-                double epsilon = 0.001;
-
-                boolean atMin = servoPosition <= 0.0 + epsilon;
-                boolean atMax = servoPosition >= 1.0 - epsilon;
-
-                boolean pushingIntoLimit = (atMin && error < 0) || (atMax && error > 0);
-
-                if (!pushingIntoLimit) {
-                    rotationalTurretServo.setPosition(servoPosition);
-                }
-
-                //Velocity Compensation
-                double velocity = Math.sqrt((pinpoint.getVelX(DistanceUnit.CM) * pinpoint.getVelX(DistanceUnit.CM)) * ((pinpoint.getVelY(DistanceUnit.CM) * pinpoint.getVelY(DistanceUnit.CM))));
-                double acclSpeed = 0;
-                double dcclSpeed = 0;
-
-
-
-// Deadband
-              /*  if (Math.abs(error) > Math.toRadians(1)) {
-                    rotationalTurretServo.setPosition(servoPosition);
-                } */
-
+                turret.aimTurret();
             } else if (aiming == false) {
-                rotationalTurretServo.setPosition(servoDir);
+                turret.centre();
             }
 
             if (gamepad1.dpad_left) {
-                targetPose = new Pose(pinpoint.getPosX(DistanceUnit.CM), pinpoint.getPosY(DistanceUnit.CM), Math.toRadians(rotationalTurretServo.getPosition() * 170));
+                turret.setPose(new Pose(pinpoint.getPosX(DistanceUnit.CM), pinpoint.getPosY(DistanceUnit.CM), Math.toRadians(turret.rotationalTurretServo.getPosition() * 170)));
             }
 
             if (gamepad1.right_stick_button) {
@@ -453,8 +393,8 @@ public class InternationalsOfTheTeleops extends LinearOpMode {
             double robotXD = pinpoint.getPosX(DistanceUnit.CM);
             double robotYD = pinpoint.getPosY(DistanceUnit.CM);
 
-            double dx = targetPose.getX() + offsetX - robotXD;
-            double dy = targetPose.getY() + offsetY - robotYD;
+            double dx = turret.targetPose.getX() + offsetX - robotXD;
+            double dy = turret.targetPose.getY() + offsetY - robotYD;
 
             distance = Math.sqrt((dx * dx) + (dy * dy));
 
@@ -467,12 +407,12 @@ public class InternationalsOfTheTeleops extends LinearOpMode {
             pinpoint.update();
 
 
-            telemetry.addData("TurretRotationServo", "ServoDirection: " + rotationalTurretServo.getPosition());
+            telemetry.addData("TurretRotationServo", "ServoDirection: " + turret.rotationalTurretServo.getPosition());
             telemetry.addData("ServoDir", servoDir);
             //telemetry.addData("response", controller.calculate(outtake.outtakeMotor1.getVelocity(), target));
             telemetry.addData("blockServo", robotHardware.blockServo.getPosition());
-            telemetry.addData("TurretHeading", Math.toRadians(rotationalTurretServo.getPosition() * 170));
-            telemetry.addData("targetPose", targetPose);
+            telemetry.addData("TurretHeading", Math.toRadians(turret.rotationalTurretServo.getPosition() * 170));
+            telemetry.addData("targetPose", turret.targetPose);
             telemetry.addData("GoalAim", goalAimedAt);
             telemetry.addData("Distance: ", distance);
             telemetry.addData("ShootToggleType: ", shootTypeToggle);
@@ -481,6 +421,13 @@ public class InternationalsOfTheTeleops extends LinearOpMode {
             telemetry.addData("P", outtake.P);
             telemetry.addData("Velocity1", outtake.outtakeMotor1.getVelocity());
             telemetry.addData("Velocity2", outtake.outtakeMotor2.getVelocity());
+
+            //Turret
+            telemetry.addData("x", pinpoint.getPosY(DistanceUnit.CM));
+            telemetry.addData("y", pinpoint.getPosX(DistanceUnit.CM));
+            telemetry.addData("heading", pinpoint.getHeading(AngleUnit.DEGREES));
+            telemetry.addData("dx ", Turret.dx);
+            telemetry.addData("dy ", Turret.dy);
             telemetry.update();
         }
     }
