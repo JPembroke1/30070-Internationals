@@ -92,8 +92,8 @@ public class InternationalsOfTheTeleops extends LinearOpMode {
     public static double offsetX = 0;
     public static double offsetY = 0;
     public static boolean goalAimedAt = false; //False = Blue, True = Red
-    public static double formulaResult = 8.612245;
-    public static double yIntercept = -113.265313;
+    public static double formulaResult = 1.75;
+    public static double yIntercept = 633.333333;
     public static double distance = 0;
     public static double formulaResultHood = -0.002959;
     public static double yInterceptHood = 0.552438;
@@ -170,6 +170,8 @@ public class InternationalsOfTheTeleops extends LinearOpMode {
         outtake.init(hardwareMap);
         intake.init(hardwareMap);
         turret.init(hardwareMap);
+
+        pinpoint.setEncoderDirections(GoBildaPinpointDriver.EncoderDirection.FORWARD, GoBildaPinpointDriver.EncoderDirection.FORWARD);
 
 
 
@@ -423,11 +425,12 @@ public class InternationalsOfTheTeleops extends LinearOpMode {
             telemetry.addData("Velocity2", outtake.outtakeMotor2.getVelocity());
 
             //Turret
-            telemetry.addData("x", pinpoint.getPosY(DistanceUnit.CM));
-            telemetry.addData("y", pinpoint.getPosX(DistanceUnit.CM));
+            telemetry.addData("x", Turret.robotX);
+            telemetry.addData("y", Turret.robotY);
             telemetry.addData("heading", pinpoint.getHeading(AngleUnit.DEGREES));
             telemetry.addData("dx ", Turret.dx);
             telemetry.addData("dy ", Turret.dy);
+            telemetry.addData("turretWorldAngle", Turret.targetWorldAngle);
             telemetry.update();
         }
     }

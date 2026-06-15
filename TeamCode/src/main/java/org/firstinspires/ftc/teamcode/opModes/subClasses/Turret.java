@@ -24,6 +24,9 @@ public class Turret {
 
     public static double dx = 0;
     public static double dy = 0;
+    public static double robotX = 0;
+    public static double robotY = 0;
+    public static double targetWorldAngle = 0;
 
     public void init(@NonNull HardwareMap hardwareMap) {
         pinpoint = hardwareMap.get(GoBildaPinpointDriver.class, "pinpoint");
@@ -106,8 +109,8 @@ public class Turret {
 
 public void aimTurret() {
     // --- Robot pose in world space ---
-    double robotX = -pinpoint.getPosY(DistanceUnit.CM);   // right = +X
-    double robotY = -pinpoint.getPosX(DistanceUnit.CM);   // forward = +Y
+    robotX = -pinpoint.getPosY(DistanceUnit.CM);   // right = +X
+    robotY = -pinpoint.getPosX(DistanceUnit.CM);   // forward = +Y
     double robotHeading = Math.toRadians(pinpoint.getHeading(AngleUnit.DEGREES));
 
     // --- Vector from robot to target (world space) ---
@@ -115,7 +118,7 @@ public void aimTurret() {
     dy = targetPose.getY() - robotY;
 
     // --- World-space angle to target ---
-    double targetWorldAngle = Math.atan2(dx, dy);
+    targetWorldAngle = Math.atan2(dx, dy);
 
     // --- Angle to target relative to robot heading ---
     // 0 = straight ahead, positive = left, negative = right

@@ -148,7 +148,7 @@ public class bluesideClose extends OpMode {
     @Override
     public void loop() {
         follower.update();
-        turret.aimTurret();
+        //turret.aimTurret();
 
         switch (state) {
             case PATH_1:
