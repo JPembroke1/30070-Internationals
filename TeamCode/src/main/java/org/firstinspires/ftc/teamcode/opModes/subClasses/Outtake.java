@@ -49,6 +49,10 @@ public class Outtake {
     public void linearRegression(double formula, double distance, double yIntercept) {
 
         target = (formula * distance + yIntercept); //LINEAR REGRESSION
+
+        if (currentTPS > 1200) {
+
+        }
     }
 
     public void stopOuttake() {

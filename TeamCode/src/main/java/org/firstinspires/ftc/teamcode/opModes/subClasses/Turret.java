@@ -27,6 +27,9 @@ public class Turret {
     public static double robotX = 0;
     public static double robotY = 0;
     public static double targetWorldAngle = 0;
+    public static double relativeAngle = 0;
+    public static double desiredServoPosition = 0;
+    public static double currentServoPosition = 0;
 
     public void init(@NonNull HardwareMap hardwareMap) {
         pinpoint = hardwareMap.get(GoBildaPinpointDriver.class, "pinpoint");
@@ -107,7 +110,7 @@ public class Turret {
 //
 //    }
 
-public void aimTurret() {
+/*public void aimTurret() {
     // --- Robot pose in world space ---
     robotX = -pinpoint.getPosY(DistanceUnit.CM);   // right = +X
     robotY = -pinpoint.getPosX(DistanceUnit.CM);   // forward = +Y
@@ -122,16 +125,16 @@ public void aimTurret() {
 
     // --- Angle to target relative to robot heading ---
     // 0 = straight ahead, positive = left, negative = right
-    double relativeAngle = targetWorldAngle - robotHeading;
+    relativeAngle = targetWorldAngle - robotHeading;
     relativeAngle = Math.atan2(Math.sin(relativeAngle), Math.cos(relativeAngle)); // wrap to [-π, π]
 
     // --- Convert relative angle to servo position ---
     // Servo: 0.0 = 90° right (-π/2), 0.5 = straight ahead (0°), 1.0 = 90° left (+π/2)
     // servoPosition = 0.5 - (relativeAngle / π)
-    double desiredServoPosition = 0.5 - (relativeAngle / Math.PI);
+    desiredServoPosition = 0.5 - (relativeAngle / Math.PI);
 
     // --- Read current servo position and compute error ---
-    double currentServoPosition = rotationalTurretServo.getPosition();
+    currentServoPosition = rotationalTurretServo.getPosition();
     double servoError = desiredServoPosition - currentServoPosition;
 
     // --- Proportional correction ---
@@ -160,5 +163,35 @@ public void aimTurret() {
     double velY = pinpoint.getVelY(DistanceUnit.CM);
     double velocity = Math.sqrt(velX * velX + velY * velY); // fixed magnitude calc
     // TODO: use velocity to lead the target if needed
+} */
+
+public void aimTurret() {
+    // --- Robot pose in world space ---
+    double robotX = -pinpoint.getPosY(DistanceUnit.CM);
+    double robotY = -pinpoint.getPosX(DistanceUnit.CM);
+    double robotHeading = Math.toRadians(pinpoint.getHeading(AngleUnit.DEGREES));
+
+    // --- Vector from robot to target (world space) ---
+    double dx = targetPose.getX() - robotX;
+    double dy = targetPose.getY() - robotY;
+
+    // --- World-space angle to target ---
+    double targetWorldAngle = Math.atan2(dx, -dy);
+
+    // --- Angle to target relative to robot heading ---
+    // 0 = straight ahead, positive = left, negative = right
+    double relativeAngle = targetWorldAngle - robotHeading;
+    relativeAngle = Math.atan2(Math.sin(relativeAngle), Math.cos(relativeAngle)); // wrap to [-π, π]
+
+    // --- Convert relative angle to servo position ---
+    // Servo: 0.0 = 90° right (-π/2), 0.5 = straight ahead (0°), 1.0 = 90° left (+π/2)
+    double desiredServoPosition = 0.5 - (relativeAngle / Math.PI);
+
+    // --- Clamp to physical limits [0.0, 1.0] ---
+    desiredServoPosition = Math.max(0.0, Math.min(1.0, desiredServoPosition));
+
+    // --- Set servo position directly ---
+    rotationalTurretServo.setPosition(desiredServoPosition);
+
 }
 }

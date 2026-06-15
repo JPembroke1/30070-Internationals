@@ -322,7 +322,7 @@ public class InternationalsOfTheTeleops extends LinearOpMode {
             }
 
             if (gamepad1.dpad_left) {
-                turret.setPose(new Pose(pinpoint.getPosX(DistanceUnit.CM), pinpoint.getPosY(DistanceUnit.CM), Math.toRadians(turret.rotationalTurretServo.getPosition() * 170)));
+                turret.setPose(new Pose(pinpoint.getPosX(DistanceUnit.MM), pinpoint.getPosY(DistanceUnit.MM), Math.toRadians(turret.rotationalTurretServo.getPosition() * 170)));
             }
 
             if (gamepad1.right_stick_button) {
@@ -349,7 +349,7 @@ public class InternationalsOfTheTeleops extends LinearOpMode {
                 }
             } */
 
-            if (gamepad1.leftBumperWasPressed()) {
+            /*if (gamepad1.leftBumperWasPressed()) {
                 if (shootTypeToggle == 0) {
                     shootTypeToggle = 1;
                 } else if (shootTypeToggle == 1) {
@@ -357,9 +357,13 @@ public class InternationalsOfTheTeleops extends LinearOpMode {
                 } else if (shootTypeToggle == 2) {
                     shootTypeToggle = 0;
                 }
+            } */
+
+            if (gamepad1.leftBumperWasPressed()) {
+                outtake.startOuttaking(TARGET_SPEED);
             }
 
-            if (shootTypeToggle == 0) {
+            /*if (shootTypeToggle == 0) {
                 if (distance > 0 && distance < 30) {
                     thresholdValue = 1300;
                     hoodPos = 0.5;
@@ -383,7 +387,7 @@ public class InternationalsOfTheTeleops extends LinearOpMode {
                     target = TARGET_SPEED;
                     hoodPos = formulaResultHood * distance + yInterceptHood;
                 }
-            }
+            } */
 
             if (linearRegressing) {
                 outtake.linearRegression(formulaResult, distance, yIntercept);
@@ -392,8 +396,8 @@ public class InternationalsOfTheTeleops extends LinearOpMode {
 
             //hoodServo.setPosition(hoodPos);
 
-            double robotXD = pinpoint.getPosX(DistanceUnit.CM);
-            double robotYD = pinpoint.getPosY(DistanceUnit.CM);
+            double robotXD = pinpoint.getPosX(DistanceUnit.MM);
+            double robotYD = pinpoint.getPosY(DistanceUnit.MM);
 
             double dx = turret.targetPose.getX() + offsetX - robotXD;
             double dy = turret.targetPose.getY() + offsetY - robotYD;
@@ -423,14 +427,16 @@ public class InternationalsOfTheTeleops extends LinearOpMode {
             telemetry.addData("P", outtake.P);
             telemetry.addData("Velocity1", outtake.outtakeMotor1.getVelocity());
             telemetry.addData("Velocity2", outtake.outtakeMotor2.getVelocity());
-
             //Turret
             telemetry.addData("x", Turret.robotX);
             telemetry.addData("y", Turret.robotY);
             telemetry.addData("heading", pinpoint.getHeading(AngleUnit.DEGREES));
             telemetry.addData("dx ", Turret.dx);
             telemetry.addData("dy ", Turret.dy);
-            telemetry.addData("turretWorldAngle", Turret.targetWorldAngle);
+            telemetry.addData("turretWorldAngle", Math.toDegrees(Turret.targetWorldAngle));
+            telemetry.addData("relativeAngle", Math.toDegrees(Turret.relativeAngle));
+            telemetry.addData("desiredServoPos", Turret.desiredServoPosition);
+            telemetry.addData("currentServoPos", Turret.currentServoPosition);
             telemetry.update();
         }
     }
