@@ -31,7 +31,7 @@ public class InternationalsOfTheTeleops extends LinearOpMode {
     public static boolean regressionEnabled = false;
 
     public static double GOAL_X = 0;
-    public static double GOAL_Y = 136.8;
+    public static double GOAL_Y = 144;
 
     public static double RESET_POSE_X = 21;
     public static double RESET_POSE_Y = 121;
