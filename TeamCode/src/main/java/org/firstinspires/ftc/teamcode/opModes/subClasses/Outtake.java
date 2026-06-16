@@ -2,17 +2,15 @@ package org.firstinspires.ftc.teamcode.opModes.subClasses;
 
 import androidx.annotation.NonNull;
 
-import com.arcrobotics.ftclib.controller.PIDController;
 import com.arcrobotics.ftclib.controller.PIDFController;
+import com.bylazar.configurables.annotations.Configurable;
+import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
 import com.qualcomm.robotcore.hardware.DcMotorSimple;
 import com.qualcomm.robotcore.hardware.HardwareMap;
 
-import org.firstinspires.ftc.robotcore.internal.camera.delegating.DelegatingCaptureSequence;
-import org.firstinspires.ftc.teamcode.opModes.InternationalsOfTheTeleops;
-
+@Configurable
 public class Outtake {
-
 
     public DcMotorEx outtakeMotor1;
     public DcMotorEx outtakeMotor2;
@@ -20,91 +18,84 @@ public class Outtake {
 
     public static double target = 0;
     public static double currentTPS = 0;
-    public static double P = 20;
+
+    public static double P = 0.003;
     public static double I = 0.0;
-    public static double D = 0;
-    public static double F = 20;
+    public static double D = 0.0;
+    public static double F = 0.003;
 
+    public static double regressionSlope = 1.75;
+    public static double regressionIntercept = 633.333333;
 
-    RobotHardware robotHardware;
+    public static double MIN_TARGET_TPS = 0;
+    public static double MAX_TARGET_TPS = 2500;
+
+    public static double distanceToGoal = 0;
 
     public void init(@NonNull HardwareMap hardwareMap) {
         outtakeMotor1 = hardwareMap.get(DcMotorEx.class, "outtakeLeft");
         outtakeMotor2 = hardwareMap.get(DcMotorEx.class, "outtakeRight");
 
-        outtakeMotor2.setDirection(DcMotorSimple.Direction.REVERSE);
         outtakeMotor1.setDirection(DcMotorSimple.Direction.FORWARD);
+        outtakeMotor2.setDirection(DcMotorSimple.Direction.REVERSE);
+
+        outtakeMotor1.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+        outtakeMotor2.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+
+        outtakeMotor1.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.FLOAT);
+        outtakeMotor2.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.FLOAT);
 
         controller = new PIDFController(P, I, D, F);
-        robotHardware = new RobotHardware(hardwareMap);
 
+        outtakeMotor1.setPower(0);
+        outtakeMotor2.setPower(0);
     }
 
-    public void startOuttaking(double outtakePower) {
-
-        target = outtakePower;
-
+    public void setTargetTPS(double targetTPS) {
+        target = clampTarget(targetTPS);
     }
 
-    public void linearRegression(double formula, double distance, double yIntercept) {
+    public void startOuttaking(double targetTPS) {
+        target = clampTarget(targetTPS);
+    }
 
-        target = (formula * distance + yIntercept); //LINEAR REGRESSION
+    public void linearRegression(double distanceCM) {
+        distanceToGoal = distanceCM;
+        target = clampTarget((regressionSlope * distanceCM) + regressionIntercept);
+    }
 
-        if (currentTPS > 1200) {
-
-        }
+    public void linearRegression(double formula, double distanceCM, double yIntercept) {
+        distanceToGoal = distanceCM;
+        target = clampTarget((formula * distanceCM) + yIntercept);
     }
 
     public void stopOuttake() {
         target = 0;
+        outtakeMotor1.setPower(0);
+        outtakeMotor2.setPower(0);
     }
 
     public void updatePIDF() {
+        controller.setPIDF(P, I, D, F);
 
-        if (target == 0) {
+        double velocity1 = Math.abs(outtakeMotor1.getVelocity());
+        double velocity2 = Math.abs(outtakeMotor2.getVelocity());
+        currentTPS = (velocity1 + velocity2) / 2.0;
+
+        if (target <= 0) {
             outtakeMotor1.setPower(0);
             outtakeMotor2.setPower(0);
             return;
         }
 
-        currentTPS = (outtakeMotor1.getVelocity() + outtakeMotor2.getVelocity()) / 2;
+        double output = controller.calculate(currentTPS, target);
+        output = Math.max(-1.0, Math.min(1.0, output));
 
-        if (outtakeMotor1.getVelocity() < 100) {
-            currentTPS = outtakeMotor2.getVelocity();
-        } else if (outtakeMotor2.getVelocity() < 100) {
-            currentTPS = outtakeMotor1.getVelocity();
-        } else if (outtakeMotor1.getVelocity() < 100 && outtakeMotor2.getVelocity() < 100 && InternationalsOfTheTeleops.ActivatedShoot) {
-            outtakeMotor1.setPower(0.5);
-            outtakeMotor2.setPower(0.5);
-        } else {
-            currentTPS = (outtakeMotor1.getVelocity() + outtakeMotor2.getVelocity()) / 2;
-        }
-
-        double error = target - currentTPS;
-
-        // Deadband
-        if (Math.abs(error) < 20) {
-            error = 0;
-        }
-
-        // Feedforward
-        double ff = target * F;
-
-        // Simple proportional correction
-        double pid = error * P;
-
-        double response = ff + pid;
-
-        // Overspeed cap
-        if (currentTPS > target) {
-            response = Math.min(response, ff);
-        }
-
-        // Clamp motor power
-        response = Math.max(0, Math.min(1, response));
-
-        outtakeMotor1.setPower(response);
-        outtakeMotor2.setPower(response);
+        outtakeMotor1.setPower(output);
+        outtakeMotor2.setPower(output);
     }
 
+    private double clampTarget(double value) {
+        return Math.max(MIN_TARGET_TPS, Math.min(MAX_TARGET_TPS, value));
+    }
 }
