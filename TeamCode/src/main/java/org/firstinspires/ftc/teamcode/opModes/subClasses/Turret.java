@@ -4,220 +4,80 @@ import androidx.annotation.NonNull;
 
 import com.bylazar.configurables.annotations.Configurable;
 import com.pedropathing.geometry.Pose;
-import com.qualcomm.hardware.gobilda.GoBildaPinpointDriver;
-
-import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
-import org.firstinspires.ftc.robotcore.external.navigation.DistanceUnit;
-import org.firstinspires.ftc.teamcode.opModes.InternationalsOfTheTeleops;
-
 import com.qualcomm.robotcore.hardware.HardwareMap;
 import com.qualcomm.robotcore.hardware.Servo;
 
 @Configurable
 public class Turret {
-    GoBildaPinpointDriver pinpoint;
 
     public Servo rotationalTurretServo = null;
 
-    public static double kP = 0.1;
-    public static Pose targetPose = new Pose(0, 144, 0);
+    // ── Hold tuning ──────────────────────────────────────────────────────────
+    // Higher = stronger correction for small/medium error
+    public static double kP = 0.40;
 
-<<<<<<< Updated upstream
-=======
-    public static double largeErrorThreshold = 0.15;
+    // Max servo movement per loop
+    // Higher = faster catch-up, but too high can overshoot
+    public static double maxStep = 0.16;
+
+    // If error exceeds this, turret uses full maxStep
+    public static double largeErrorThreshold = 0.10;
+
+    // Keep enabled for faster recovery when the bot turns quickly
     public static boolean useLargeErrorFastMode = true;
 
-    // New tuning values
-    public static double turretScale = 1.0;
+    // ── Range / centre tuning ────────────────────────────────────────────────
+    // Use this to expand/reduce total rotation usage
+    public static double turretScale = 1.15;
+
+    // Use this to shift the whole turret centre left/right
     public static double turretCentreOffset = 0.0;
 
-    // Target pose in FIELD coordinates
+    // Hard safety endpoints for servo travel
+    // Increase only if the mechanism is proven safe there
+    public static double minServo = 0.00;
+    public static double maxServo = 1.00;
+
+    // ── Target pose in FIELD coordinates ─────────────────────────────────────
     public static Pose targetPose = new Pose(0, 0, 0);
 
-    // ── Telemetry / debug values ─────────────────────────────────────────────
+    // ── Debug / telemetry values ─────────────────────────────────────────────
     public static double robotX = 0;
     public static double robotY = 0;
->>>>>>> Stashed changes
     public static double dx = 0;
     public static double dy = 0;
-    public static double robotX = 0;
-    public static double robotY = 0;
-    public static double targetWorldAngle = 0;
-    public static double relativeAngle = 0;
-    public static double desiredServoPosition = 0;
-    public static double currentServoPosition = 0;
+    public static double robotHeadingDeg = 0;
+    public static double targetWorldAngleDeg = 0;
+    public static double relativeAngleDeg = 0;
+    public static double desiredServo = 0;
+    public static double currentServo = 0;
+    public static double servoError = 0;
+    public static double appliedCorrection = 0;
 
+    // ── Init ─────────────────────────────────────────────────────────────────
     public void init(@NonNull HardwareMap hardwareMap) {
-        pinpoint = hardwareMap.get(GoBildaPinpointDriver.class, "pinpoint");
         rotationalTurretServo = hardwareMap.get(Servo.class, "rotationalTurretServo");
+    }
 
-<<<<<<< Updated upstream
-=======
+    // ── Utility ──────────────────────────────────────────────────────────────
     public void centre() {
-        rotationalTurretServo.setPosition(0.5 + turretCentreOffset);
->>>>>>> Stashed changes
+        double centre = clamp(0.5 + turretCentreOffset, minServo, maxServo);
+        rotationalTurretServo.setPosition(centre);
     }
 
     public void setPose(Pose pose) {
         targetPose = pose;
     }
 
-<<<<<<< Updated upstream
-    public void centre() {
-        rotationalTurretServo.setPosition(0.5);
-    }
-
-//    public void aimTurret() {
-//      //WORKING
-//        pinpoint.setEncoderDirections(GoBildaPinpointDriver.EncoderDirection.REVERSED, GoBildaPinpointDriver.EncoderDirection.REVERSED);
-//
-//        double robotY = pinpoint.getPosX(DistanceUnit.CM);
-//        double robotX = pinpoint.getPosY(DistanceUnit.CM);
-//        double robotHeading = Math.toRadians(pinpoint.getHeading(AngleUnit.DEGREES));
-//
-//
-//
-//// Vector to target
-//        double dx = targetPose.getX() - robotX;
-//        double dy = targetPose.getY() - robotY;
-//
-//// World-space angle to target
-//        double targetHeading = Math.atan2(dy, dx);
-//
-//// Current turret angle (0 → 180 deg)
-//       double turretAngle = Math.toRadians((-rotationalTurretServo.getPosition() * 180.0) + 90);
-//        //double turretAngle = Math.toRadians(rotationalTurretServo.getPosition() * 180);
-//        //double turretAngle = Math.toRadians((rotationalTurretServo.getPosition() - 0.5) * 180);
-//// Turret world direction
-//        double turretWorldHeading = robotHeading + turretAngle;
-//
-//// Angle error
-//        double error = targetHeading - turretWorldHeading;
-//        error = Math.atan2(Math.sin(error), Math.cos(error)); // wrap
-//
-//// Apply proportional correction
-//        double newTurretAngle = turretAngle + error * kP;
-//
-//// Clamp to physical limits (0° → 180°)
-//        //newTurretAngle = Math.max(0, Math.min(Math.PI, newTurretAngle));
-//        newTurretAngle = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, newTurretAngle));
-//// Convert back to servo position
-//        double servoPosition = Math.toDegrees((newTurretAngle) + 90) / 180;
-//        //double servoPosition = (90 - Math.toDegrees(newTurretAngle)) / 180;
-//
-//        double epsilon = 0.001;
-//
-//        boolean atMin = servoPosition <= 0.0 + epsilon;
-//        boolean atMax = servoPosition >= 1.0 - epsilon;
-//
-//        boolean pushingIntoLimit = (atMin && error < 0) || (atMax && error > 0);
-//
-//        if (!pushingIntoLimit) {
-//            rotationalTurretServo.setPosition(servoPosition);
-//        }
-//
-//        //Velocity Compensation
-//        double velocity = Math.sqrt((pinpoint.getVelX(DistanceUnit.CM) * pinpoint.getVelX(DistanceUnit.CM)) + ((pinpoint.getVelY(DistanceUnit.CM) * pinpoint.getVelY(DistanceUnit.CM))));
-//        double acclSpeed = 0;
-//        double dcclSpeed = 0;
-//
-//
-//
-//
-//// Deadband
-//                //if (Math.abs(error) > Math.toRadians(2)) {
-//                //    rotationalTurretServo.setPosition(servoPosition);
-//                //}
-//
-//
-//    }
-
-/*public void aimTurret() {
-    // --- Robot pose in world space ---
-    robotX = -pinpoint.getPosY(DistanceUnit.CM);   // right = +X
-    robotY = -pinpoint.getPosX(DistanceUnit.CM);   // forward = +Y
-    double robotHeading = Math.toRadians(pinpoint.getHeading(AngleUnit.DEGREES));
-
-    // --- Vector from robot to target (world space) ---
-    dx = targetPose.getX() - robotX;
-    dy = targetPose.getY() - robotY;
-
-    // --- World-space angle to target ---
-    targetWorldAngle = Math.atan2(dx, dy);
-
-    // --- Angle to target relative to robot heading ---
-    // 0 = straight ahead, positive = left, negative = right
-    relativeAngle = targetWorldAngle - robotHeading;
-    relativeAngle = Math.atan2(Math.sin(relativeAngle), Math.cos(relativeAngle)); // wrap to [-π, π]
-
-    // --- Convert relative angle to servo position ---
-    // Servo: 0.0 = 90° right (-π/2), 0.5 = straight ahead (0°), 1.0 = 90° left (+π/2)
-    // servoPosition = 0.5 - (relativeAngle / π)
-    desiredServoPosition = 0.5 - (relativeAngle / Math.PI);
-
-    // --- Read current servo position and compute error ---
-    currentServoPosition = rotationalTurretServo.getPosition();
-    double servoError = desiredServoPosition - currentServoPosition;
-
-    // --- Proportional correction ---
-    double correction = servoError * kP;
-
-    // --- Max step clamp (prevents wild overshoot) ---
-    double maxStep = 0.05; // tune this
-    correction = Math.max(-maxStep, Math.min(maxStep, correction));
-
-    double newServoPosition = currentServoPosition + correction;
-
-    // --- Clamp to physical limits [0.0, 1.0] ---
-    newServoPosition = Math.max(0.0, Math.min(1.0, newServoPosition));
-
-    // --- Limit guard: don't push into a hard stop ---
-    boolean atMin = newServoPosition <= 0.001;
-    boolean atMax = newServoPosition >= 0.999;
-    boolean pushingIntoLimit = (atMin && servoError < 0) || (atMax && servoError > 0);
-
-    if (!pushingIntoLimit) {
-        rotationalTurretServo.setPosition(newServoPosition);
-    }
-
-    // --- Velocity compensation (placeholder) ---
-    double velX = pinpoint.getVelX(DistanceUnit.CM);
-    double velY = pinpoint.getVelY(DistanceUnit.CM);
-    double velocity = Math.sqrt(velX * velX + velY * velY); // fixed magnitude calc
-    // TODO: use velocity to lead the target if needed
-} */
-
-public void aimTurret() {
-    // --- Robot pose in world space ---
-    double robotX = -pinpoint.getPosY(DistanceUnit.CM);
-    double robotY = -pinpoint.getPosX(DistanceUnit.CM);
-    double robotHeading = Math.toRadians(pinpoint.getHeading(AngleUnit.DEGREES));
-
-    // --- Vector from robot to target (world space) ---
-    double dx = targetPose.getX() - robotX;
-    double dy = targetPose.getY() - robotY;
-
-    // --- World-space angle to target ---
-    double targetWorldAngle = Math.atan2(dx, -dy);
-
-    // --- Angle to target relative to robot heading ---
-    // 0 = straight ahead, positive = left, negative = right
-    double relativeAngle = targetWorldAngle - robotHeading;
-    relativeAngle = Math.atan2(Math.sin(relativeAngle), Math.cos(relativeAngle)); // wrap to [-π, π]
-
-    // --- Convert relative angle to servo position ---
-    // Servo: 0.0 = 90° right (-π/2), 0.5 = straight ahead (0°), 1.0 = 90° left (+π/2)
-    double desiredServoPosition = 0.5 - (relativeAngle / Math.PI);
-
-    // --- Clamp to physical limits [0.0, 1.0] ---
-    desiredServoPosition = Math.max(0.0, Math.min(1.0, desiredServoPosition));
-
-    // --- Set servo position directly ---
-    rotationalTurretServo.setPosition(desiredServoPosition);
-
-}
-}
-=======
+    // ── Main aim method ──────────────────────────────────────────────────────
+    /**
+     * Field assumptions:
+     * - +X = right
+     * - +Y = up
+     * - heading in radians
+     *
+     * targetPose and robotPose must both be in the same field coordinate system.
+     */
     public void aimTurret(Pose robotPose) {
         robotX = robotPose.getX();
         robotY = robotPose.getY();
@@ -225,17 +85,25 @@ public void aimTurret() {
         double robotHeading = robotPose.getHeading();
         robotHeadingDeg = Math.toDegrees(robotHeading);
 
+        // Field-space vector from robot to target
         dx = targetPose.getX() - robotX;
         dy = targetPose.getY() - robotY;
 
-        targetWorldAngle = Math.atan2(dy, dx);
+        // World angle to target
+        double targetWorldAngle = Math.atan2(dy, dx);
+        targetWorldAngleDeg = Math.toDegrees(targetWorldAngle);
 
-        double relativeAngle = targetWorldAngle - robotHeading;
-        relativeAngle = Math.atan2(Math.sin(relativeAngle), Math.cos(relativeAngle));
+        // Robot-relative angle
+        double relativeAngle = angleWrap(targetWorldAngle - robotHeading);
         relativeAngleDeg = Math.toDegrees(relativeAngle);
 
-        desiredServo = 0.5 + turretCentreOffset + turretScale * (relativeAngle / Math.PI);
-        desiredServo = Math.max(0.0, Math.min(1.0, desiredServo));
+        // Convert relative angle to servo target
+        // '+' mapping is intentional because this was the working direction
+        desiredServo = 0.5
+                + turretCentreOffset
+                + turretScale * (relativeAngle / Math.PI);
+
+        desiredServo = clamp(desiredServo, minServo, maxServo);
 
         currentServo = rotationalTurretServo.getPosition();
         servoError = desiredServo - currentServo;
@@ -245,15 +113,25 @@ public void aimTurret() {
             correction = Math.signum(servoError) * maxStep;
         } else {
             correction = servoError * kP;
-            correction = Math.max(-maxStep, Math.min(maxStep, correction));
+            correction = clamp(correction, -maxStep, maxStep);
         }
 
         appliedCorrection = correction;
 
         double newServoPos = currentServo + correction;
-        newServoPos = Math.max(0.0, Math.min(1.0, newServoPos));
+        newServoPos = clamp(newServoPos, minServo, maxServo);
 
         rotationalTurretServo.setPosition(newServoPos);
     }
+
+    // ── Helpers ──────────────────────────────────────────────────────────────
+    private double angleWrap(double angle) {
+        while (angle <= -Math.PI) angle += 2.0 * Math.PI;
+        while (angle > Math.PI) angle -= 2.0 * Math.PI;
+        return angle;
+    }
+
+    private double clamp(double value, double min, double max) {
+        return Math.max(min, Math.min(max, value));
+    }
 }
->>>>>>> Stashed changes

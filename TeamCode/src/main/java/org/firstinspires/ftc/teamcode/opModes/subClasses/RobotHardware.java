@@ -53,7 +53,7 @@ public class RobotHardware {
 
     // Optional simple smoothing for distance input
     public static boolean useDistanceSmoothing = true;
-    public static double distanceAlpha = 0.2;
+    public static double distanceAlpha = 0.4;
 
     // ── State ────────────────────────────────────────────────────────────────
     public static double lastCommandedHood = 0.5;
