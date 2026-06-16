@@ -3,6 +3,7 @@ package org.firstinspires.ftc.teamcode.opModes;
 import com.bylazar.configurables.annotations.Configurable;
 import com.pedropathing.follower.Follower;
 import com.pedropathing.geometry.Pose;
+import com.qualcomm.hardware.lynx.LynxModule;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 import com.qualcomm.robotcore.hardware.DcMotor;
@@ -13,6 +14,8 @@ import org.firstinspires.ftc.teamcode.opModes.subClasses.Outtake;
 import org.firstinspires.ftc.teamcode.opModes.subClasses.RobotHardware;
 import org.firstinspires.ftc.teamcode.opModes.subClasses.Turret;
 import org.firstinspires.ftc.teamcode.pedroPathing.Constants;
+
+import java.util.List;
 
 @Configurable
 @TeleOp(name = "InternationalTelopsOfTheAwesomeness", group = "Linear OpMode")
@@ -47,6 +50,8 @@ public class InternationalsOfTheTeleops extends LinearOpMode {
     private Outtake outtake;
     private Turret turret;
     private Follower follower;
+
+    private List<LynxModule> hubs;
 
     private Pose livePose;
     private boolean liveTrackingArmed = false;
@@ -92,11 +97,18 @@ public class InternationalsOfTheTeleops extends LinearOpMode {
         runtime.reset();
 
         while (opModeIsActive()) {
+
+            for (LynxModule hub : hubs) {
+                hub.clearBulkCache();
+            }
+
             updateButtonEdges();
             handlePoseSeedAndLiveTracking();
             updateLivePose();
 
             turret.setPose(new Pose(GOAL_X + offsetX, GOAL_Y + offsetY, 0));
+
+            intake.update(runtime.milliseconds());
 
             handleDrive();
             handleRegressionButtons();
@@ -133,6 +145,11 @@ public class InternationalsOfTheTeleops extends LinearOpMode {
     private void initSubsystems() {
         telemetry.addLine("Init: subsystems");
         telemetry.update();
+
+        hubs = hardwareMap.getAll(LynxModule.class);
+        for (LynxModule hub : hubs) {
+            hub.setBulkCachingMode(LynxModule.BulkCachingMode.MANUAL);
+        }
 
         robotHardware = new RobotHardware(hardwareMap);
 
@@ -263,14 +280,16 @@ public class InternationalsOfTheTeleops extends LinearOpMode {
     private void handleIntake() {
         if (gamepad1.right_bumper) {
             intake.intake(1, 1);
+
         } else if (gamepad1.right_trigger > 0.6) {
-            if (regressionEnabled && Outtake.currentTPS > 1500) {
+            if (regressionEnabled && intake.isBallReady()) {
                 robotHardware.release();
                 intake.intake(0.7, 0.9);
             } else {
                 robotHardware.block();
                 intake.intakeStop();
             }
+
         } else {
             robotHardware.block();
             intake.intakeStop();
@@ -306,10 +325,7 @@ public class InternationalsOfTheTeleops extends LinearOpMode {
         double goalX = GOAL_X + offsetX;
         double goalY = GOAL_Y + offsetY;
 
-        double ddx = goalX - robotX;
-        double ddy = goalY - robotY;
-
-        distance = Math.hypot(ddx, ddy);
+        distance = Math.hypot(goalX - robotX, goalY - robotY);
 
         if (regressionEnabled) {
             double distanceCM = distance * 2.54;
@@ -327,46 +343,33 @@ public class InternationalsOfTheTeleops extends LinearOpMode {
         double goalY = GOAL_Y + offsetY;
         double dxGoal = goalX - robotX;
         double dyGoal = goalY - robotY;
-        double distanceToGoal = Math.hypot(dxGoal, dyGoal);
         double angleToGoalDeg = Math.toDegrees(Math.atan2(dyGoal, dxGoal));
 
         telemetry.addData("Status", "Running - %.1fs", runtime.seconds());
+
+        telemetry.addLine("--- Ball Sensor ---");
+        telemetry.addData("Ball Ready", Intake.ballReady ? "YES" : "NO");
+        telemetry.addData("LED", Intake.ballReady ? "green" : "red");
 
         telemetry.addLine("--- Field Pose ---");
         telemetry.addData("Field X", "%.2f", robotX);
         telemetry.addData("Field Y", "%.2f", robotY);
         telemetry.addData("Heading", "%.1f deg", robotHeadingDeg);
-        telemetry.addData("Live Pose Enabled", ENABLE_LIVE_POSE);
         telemetry.addData("Live Tracking Armed", liveTrackingArmed);
-        telemetry.addData("Follower Available", follower != null);
 
-        telemetry.addLine("--- Reset Pose ---");
-        telemetry.addData("Reset X", "%.2f", RESET_POSE_X);
-        telemetry.addData("Reset Y", "%.2f", RESET_POSE_Y);
-        telemetry.addData("Reset Heading", "%.1f deg", RESET_POSE_HEADING_DEG);
-
-        telemetry.addLine("--- Goal / Field Target ---");
+        telemetry.addLine("--- Goal ---");
         telemetry.addData("Goal X", "%.2f", goalX);
         telemetry.addData("Goal Y", "%.2f", goalY);
-        telemetry.addData("dx Goal", "%.2f", dxGoal);
-        telemetry.addData("dy Goal", "%.2f", dyGoal);
-        telemetry.addData("Distance To Goal (in)", "%.2f", distanceToGoal);
+        telemetry.addData("Distance (in)", "%.1f", distance);
         telemetry.addData("Angle To Goal", "%.1f deg", angleToGoalDeg);
 
         telemetry.addLine("--- Turret ---");
         telemetry.addData("Aiming", aiming);
-        telemetry.addData("Servo Pos", "%.3f", turret.rotationalTurretServo.getPosition());
-        telemetry.addData("Target X", "%.2f", Turret.targetPose.getX());
-        telemetry.addData("Target Y", "%.2f", Turret.targetPose.getY());
-        telemetry.addData("dx", "%.2f", Turret.dx);
-        telemetry.addData("dy", "%.2f", Turret.dy);
-        telemetry.addData("World Angle", "%.1f deg", Turret.targetWorldAngle);
         telemetry.addData("Relative Angle", "%.1f deg", Turret.relativeAngleDeg);
         telemetry.addData("Desired Servo", "%.3f", Turret.desiredServo);
 
         telemetry.addLine("--- Shooter ---");
-        telemetry.addData("Regression Enabled", regressionEnabled);
-        telemetry.addData("Distance (in)", "%.1f", distance);
+        telemetry.addData("Regression", regressionEnabled ? "ON" : "OFF");
         telemetry.addData("Distance (cm)", "%.1f", distance * 2.54);
         telemetry.addData("Target TPS", "%.0f", Outtake.target);
         telemetry.addData("Current TPS", "%.0f", Outtake.currentTPS);

@@ -23,16 +23,8 @@ public class newBlueSideClose extends OpMode {
     private Turret turret;
     private RobotHardware robotHardware;
 
-    // ── Goal target in FIELD coordinates ─────────────────────────────────────
-    // Field system:
-    // (0,0) bottom-left
-    // +x right
-    // +y up
-    //
-    // If you later decide the true target is the exact top-left corner,
-    // change GOAL_Y to 144 and retest.
     public static double GOAL_X = 0;
-    public static double GOAL_Y = 136.8;
+    public static double GOAL_Y = 144;
 
     // Optional live trim if needed
     public static double GOAL_OFFSET_X = 0;
@@ -70,9 +62,6 @@ public class newBlueSideClose extends OpMode {
 
     private AutoState state = AutoState.PATH_1;
 
-    // ── Field poses ──────────────────────────────────────────────────────────
-    // You may still want to retune these headings slightly on-field now that
-    // localisation is corrected, but the structure remains the same.
     private final Pose startPose  = new Pose(21, 121, Math.toRadians(143));
     private final Pose Shoot      = new Pose(60, 80,  Math.toRadians(177));
     private final Pose Stack_1    = new Pose(17, 82,  Math.toRadians(177));
@@ -85,13 +74,7 @@ public class newBlueSideClose extends OpMode {
     private PathChain pathToPos1, pathToPos2, pathToPos3, pathToPos4, pathToPos5;
     private PathChain pathToPos6, pathToPos7, pathToPos8, pathToPos9;
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // Path helpers
-    // ─────────────────────────────────────────────────────────────────────────
 
-    /**
-     * Starts a path and stamps the timeout clock.
-     */
     private void startPath(PathChain path, double timeoutSeconds) {
         follower.followPath(path);
         pathStartTime = getRuntime();
@@ -103,9 +86,7 @@ public class newBlueSideClose extends OpMode {
         return (getRuntime() - pathStartTime) > currentTimeout;
     }
 
-    /**
-     * Returns true when path finishes naturally OR timeout expires.
-     */
+
     private boolean pathComplete() {
         if (!follower.isBusy()) return true;
 
@@ -117,13 +98,6 @@ public class newBlueSideClose extends OpMode {
         return false;
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // Shooter spin-up helpers
-    // ─────────────────────────────────────────────────────────────────────────
-
-    /**
-     * Call once when entering a shooter-wait section.
-     */
     private void startTpsWait() {
         tpsWaitStartTime = getRuntime();
         tpsTimeoutFired = false;
@@ -137,10 +111,7 @@ public class newBlueSideClose extends OpMode {
         return (getRuntime() - tpsWaitStartTime) > TPS_SPINUP_TIMEOUT;
     }
 
-    /**
-     * Returns true when shooter is at speed OR timeout expires.
-     * Use in state logic only.
-     */
+
     private boolean shooterReadyOrTimedOut() {
         if (isShooterAtSpeed()) {
             return true;
@@ -154,9 +125,6 @@ public class newBlueSideClose extends OpMode {
         return false;
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // Goal / targeting helpers
-    // ─────────────────────────────────────────────────────────────────────────
 
     private Pose getGoalPose() {
         return new Pose(GOAL_X + GOAL_OFFSET_X, GOAL_Y + GOAL_OFFSET_Y, 0);
@@ -166,10 +134,7 @@ public class newBlueSideClose extends OpMode {
         turret.setPose(getGoalPose());
     }
 
-    /**
-     * Distance from robot pose to goal in CM.
-     * Pedro pose is in inches, regressions use CM.
-     */
+
     private double distanceToGoalCM() {
         Pose robotPose = follower.getPose();
         Pose goalPose = getGoalPose();
@@ -180,9 +145,7 @@ public class newBlueSideClose extends OpMode {
         return Math.hypot(dx, dy) * 2.54;
     }
 
-    /**
-     * Preview only — no hardware commands.
-     */
+
     private double previewTurretServo() {
         Pose robotPose = follower.getPose();
         Pose goalPose = getGoalPose();
@@ -222,9 +185,6 @@ public class newBlueSideClose extends OpMode {
         robotHardware.block();
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // Build paths
-    // ─────────────────────────────────────────────────────────────────────────
 
     public void buildPaths() {
         pathToPos1 = follower.pathBuilder()
@@ -272,10 +232,6 @@ public class newBlueSideClose extends OpMode {
                 .setLinearHeadingInterpolation(Shoot.getHeading(), End.getHeading())
                 .build();
     }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // Init
-    // ─────────────────────────────────────────────────────────────────────────
 
     @Override
     public void init() {
