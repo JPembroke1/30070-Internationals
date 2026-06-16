@@ -22,6 +22,22 @@ public class Turret {
     public static double kP = 0.1;
     public static Pose targetPose = new Pose(0, 144, 0);
 
+<<<<<<< Updated upstream
+=======
+    public static double largeErrorThreshold = 0.15;
+    public static boolean useLargeErrorFastMode = true;
+
+    // New tuning values
+    public static double turretScale = 1.0;
+    public static double turretCentreOffset = 0.0;
+
+    // Target pose in FIELD coordinates
+    public static Pose targetPose = new Pose(0, 0, 0);
+
+    // ── Telemetry / debug values ─────────────────────────────────────────────
+    public static double robotX = 0;
+    public static double robotY = 0;
+>>>>>>> Stashed changes
     public static double dx = 0;
     public static double dy = 0;
     public static double robotX = 0;
@@ -35,12 +51,18 @@ public class Turret {
         pinpoint = hardwareMap.get(GoBildaPinpointDriver.class, "pinpoint");
         rotationalTurretServo = hardwareMap.get(Servo.class, "rotationalTurretServo");
 
+<<<<<<< Updated upstream
+=======
+    public void centre() {
+        rotationalTurretServo.setPosition(0.5 + turretCentreOffset);
+>>>>>>> Stashed changes
     }
 
     public void setPose(Pose pose) {
         targetPose = pose;
     }
 
+<<<<<<< Updated upstream
     public void centre() {
         rotationalTurretServo.setPosition(0.5);
     }
@@ -195,3 +217,43 @@ public void aimTurret() {
 
 }
 }
+=======
+    public void aimTurret(Pose robotPose) {
+        robotX = robotPose.getX();
+        robotY = robotPose.getY();
+
+        double robotHeading = robotPose.getHeading();
+        robotHeadingDeg = Math.toDegrees(robotHeading);
+
+        dx = targetPose.getX() - robotX;
+        dy = targetPose.getY() - robotY;
+
+        targetWorldAngle = Math.atan2(dy, dx);
+
+        double relativeAngle = targetWorldAngle - robotHeading;
+        relativeAngle = Math.atan2(Math.sin(relativeAngle), Math.cos(relativeAngle));
+        relativeAngleDeg = Math.toDegrees(relativeAngle);
+
+        desiredServo = 0.5 + turretCentreOffset + turretScale * (relativeAngle / Math.PI);
+        desiredServo = Math.max(0.0, Math.min(1.0, desiredServo));
+
+        currentServo = rotationalTurretServo.getPosition();
+        servoError = desiredServo - currentServo;
+
+        double correction;
+        if (useLargeErrorFastMode && Math.abs(servoError) > largeErrorThreshold) {
+            correction = Math.signum(servoError) * maxStep;
+        } else {
+            correction = servoError * kP;
+            correction = Math.max(-maxStep, Math.min(maxStep, correction));
+        }
+
+        appliedCorrection = correction;
+
+        double newServoPos = currentServo + correction;
+        newServoPos = Math.max(0.0, Math.min(1.0, newServoPos));
+
+        rotationalTurretServo.setPosition(newServoPos);
+    }
+}
+>>>>>>> Stashed changes

@@ -33,6 +33,35 @@ public class RobotHardware {
     public Servo hoodServo = null;
     public Servo blockServo = null;
 
+<<<<<<< Updated upstream
+=======
+    // ── Hood regression tunables ─────────────────────────────────────────────
+    // Distance must be in CM
+    public static double hoodSlope = -0.002959;
+    public static double hoodIntercept = 0.552438;
+
+    // ── Hood physical / useful limits ────────────────────────────────────────
+    // These should reflect your actual usable hood range, not just raw servo range.
+    public static double hoodMin = 0.16;
+    public static double hoodMax = 0.45;
+
+    // Ignore tiny changes to stop jitter
+    public static double hoodDeadband = 0.0001;
+
+    // Limit movement per loop so the hood does not jump or drift badly
+    public static double hoodMaxStep = 0.02;
+
+    // Optional simple smoothing for distance input
+    public static boolean useDistanceSmoothing = true;
+    public static double distanceAlpha = 0.2;
+
+    // ── State ────────────────────────────────────────────────────────────────
+    public static double lastCommandedHood = 0.5;
+    public static double filteredDistanceCM = 0.0;
+    public static boolean hoodInitialised = false;
+
+    // ── Constructor ──────────────────────────────────────────────────────────
+>>>>>>> Stashed changes
     public RobotHardware(HardwareMap hardwareMap) {
         hoodServo = hardwareMap.get(Servo.class, "hoodServo");
         blockServo = hardwareMap.get(Servo.class, "blockServo");
