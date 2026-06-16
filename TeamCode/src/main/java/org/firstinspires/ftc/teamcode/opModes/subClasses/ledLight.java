@@ -11,7 +11,7 @@ import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 public class ledLight {
     public Servo led;
 
-    led = harwaremap.get(Servo.class, "led");
+    //led = hardwaremap.get(Servo.class, "led");
 
     public static double red = 0.3;
     public static double green = 0.5;
