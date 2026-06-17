@@ -78,6 +78,22 @@ public class InternationalsOfTheTeleops extends OpMode {
     public static double INTAKE_TURN_MULTIPLIER = 0.45;
 
     // ─────────────────────────────────────────────────────────────────────────
+    // Shooter target tuning
+    //
+    // USE_STATIC_TARGET_TPS:
+    // - true = use STATIC_TARGET_TPS for shooter tuning.
+    // - false = use distance-based linear regression.
+    //
+    // Tuning notes:
+    // - Use static mode when tuning kV, kS and kP in Outtake.java.
+    // - Use regression mode for normal match shooting.
+    // - Hood regression still runs from distance in both modes.
+    // ─────────────────────────────────────────────────────────────────────────
+
+    public static boolean USE_STATIC_TARGET_TPS = true;
+    public static double STATIC_TARGET_TPS = 1500;
+
+    // ─────────────────────────────────────────────────────────────────────────
     // Intake / feed tuning
     //
     // gamepad1.right_bumper:
@@ -143,6 +159,8 @@ public class InternationalsOfTheTeleops extends OpMode {
         telemetry.addData("Alliance", allianceColour);
         telemetry.addData("Goal X", "%.2f", getGoalPose().getX());
         telemetry.addData("Goal Y", "%.2f", getGoalPose().getY());
+        telemetry.addData("Static TPS Mode", USE_STATIC_TARGET_TPS);
+        telemetry.addData("Static Target TPS", "%.0f", STATIC_TARGET_TPS);
         telemetry.update();
     }
 
@@ -166,15 +184,6 @@ public class InternationalsOfTheTeleops extends OpMode {
 
     // ─────────────────────────────────────────────────────────────────────────
     // Main loop
-    //
-    // Order matters:
-    // 1. Read driver/operator controls.
-    // 2. Update goal target and live tuning offsets.
-    // 3. Drive robot.
-    // 4. Update Pedro/localisation.
-    // 5. Aim turret from field coordinates.
-    // 6. Update shooter/hood regression from distance.
-    // 7. Run intake/feed controls.
     // ─────────────────────────────────────────────────────────────────────────
 
     @Override
@@ -201,7 +210,12 @@ public class InternationalsOfTheTeleops extends OpMode {
         }
 
         if (shooterEnabled) {
-            outtake.linearRegression(distCM);
+            if (USE_STATIC_TARGET_TPS) {
+                outtake.setTargetTPS(STATIC_TARGET_TPS);
+            } else {
+                outtake.linearRegression(distCM);
+            }
+
             robotHardware.linearHoodRegression(distCM);
         } else {
             outtake.stopOuttake();
@@ -238,9 +252,6 @@ public class InternationalsOfTheTeleops extends OpMode {
     // - gamepad1.right_bumper is intake collect.
     // - While intake collect is active, only turn is reduced.
     // - Forward and strafe remain full speed.
-    //
-    // Pedro note:
-    // - This project's Follower uses setTeleOpDrive(forward, strafe, turn).
     // ─────────────────────────────────────────────────────────────────────────
 
     private void driveRobot() {
@@ -257,18 +268,6 @@ public class InternationalsOfTheTeleops extends OpMode {
 
     // ─────────────────────────────────────────────────────────────────────────
     // Toggles and manual overrides
-    //
-    // gamepad2.right_bumper:
-    // - toggles shooter regression/PIDF on and off.
-    //
-    // gamepad2.left_bumper:
-    // - toggles auto turret aiming on and off.
-    //
-    // gamepad2.b:
-    // - centres turret.
-    //
-    // gamepad2.a:
-    // - emergency stop for shooter/intake/feed.
     // ─────────────────────────────────────────────────────────────────────────
 
     private void handleToggles() {
@@ -300,12 +299,6 @@ public class InternationalsOfTheTeleops extends OpMode {
 
     // ─────────────────────────────────────────────────────────────────────────
     // Alliance selection
-    //
-    // gamepad1.dpad_left:
-    // - blue target.
-    //
-    // gamepad1.dpad_right:
-    // - red target.
     // ─────────────────────────────────────────────────────────────────────────
 
     private void handleAllianceSelection() {
@@ -320,15 +313,6 @@ public class InternationalsOfTheTeleops extends OpMode {
 
     // ─────────────────────────────────────────────────────────────────────────
     // Live goal offset tuning
-    //
-    // gamepad2.dpad_left/right:
-    // - tune GOAL_OFFSET_X.
-    //
-    // gamepad2.dpad_up/down:
-    // - tune GOAL_OFFSET_Y.
-    //
-    // gamepad2.left_stick_button:
-    // - reset offsets.
     // ─────────────────────────────────────────────────────────────────────────
 
     private void handleGoalOffsetTuning() {
@@ -412,10 +396,6 @@ public class InternationalsOfTheTeleops extends OpMode {
     // ─────────────────────────────────────────────────────────────────────────
     // Goal helpers
     //
-    // Heading note:
-    // - The turret aims by calculating the field-space angle from robot pose
-    //   to goal pose, then subtracting robot heading.
-    //
     // Distance note:
     // - Pedro coordinates are inches.
     // - Shooter and hood regression use centimetres.
@@ -454,12 +434,6 @@ public class InternationalsOfTheTeleops extends OpMode {
 
     // ─────────────────────────────────────────────────────────────────────────
     // Telemetry
-    //
-    // Tuning notes:
-    // - Use Goal Offset X/Y to copy final tuning values back into Auto.
-    // - Use Turret values to tune turretScale, maxStep and deadband.
-    // - Use Shooter values to tune Outtake regression and PIDF.
-    // - Use Intake values to confirm the goBILDA sensor and RGB indicator.
     // ─────────────────────────────────────────────────────────────────────────
 
     private void updateTelemetry(Pose currentPose, double distCM) {
@@ -477,17 +451,26 @@ public class InternationalsOfTheTeleops extends OpMode {
         telemetry.addData("Offset Step", "%.2f", GOAL_OFFSET_STEP);
         telemetry.addData("Distance CM", "%.1f", distCM);
 
-        telemetry.addLine("Pose");
-        telemetry.addData("X", "%.2f", currentPose.getX());
-        telemetry.addData("Y", "%.2f", currentPose.getY());
-        telemetry.addData("Heading", "%.1f", Math.toDegrees(currentPose.getHeading()));
+        telemetry.addLine("Shooter Target Mode");
+        telemetry.addData("Static TPS Mode", USE_STATIC_TARGET_TPS);
+        telemetry.addData("Static Target TPS", "%.0f", STATIC_TARGET_TPS);
+        telemetry.addData("Regression Slope", "%.4f", Outtake.regressionSlope);
+        telemetry.addData("Regression Intercept", "%.1f", Outtake.regressionIntercept);
 
         telemetry.addLine("Shooter");
         telemetry.addData("Target TPS", "%.0f", Outtake.target);
         telemetry.addData("Current TPS", "%.0f", Outtake.currentTPS);
         telemetry.addData("Left TPS", "%.0f", Outtake.leftVelocity);
         telemetry.addData("Right TPS", "%.0f", Outtake.rightVelocity);
+        telemetry.addData("Error", "%.0f", Outtake.lastError);
         telemetry.addData("Output", "%.3f", Outtake.lastOutput);
+        telemetry.addData("At Speed %", outtake.isAtSpeed(0.95));
+        telemetry.addData("At Speed Tol", outtake.isAtSpeedTolerance());
+
+        telemetry.addLine("Pose");
+        telemetry.addData("X", "%.2f", currentPose.getX());
+        telemetry.addData("Y", "%.2f", currentPose.getY());
+        telemetry.addData("Heading", "%.1f", Math.toDegrees(currentPose.getHeading()));
 
         telemetry.addLine("Turret");
         telemetry.addData("Relative Angle", "%.1f", Turret.relativeAngleDeg);
@@ -507,4 +490,3 @@ public class InternationalsOfTheTeleops extends OpMode {
         telemetry.update();
     }
 }
-
