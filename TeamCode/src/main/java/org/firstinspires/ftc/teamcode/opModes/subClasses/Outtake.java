@@ -62,10 +62,10 @@ public class Outtake {
     // ─────────────────────────────────────────────────────────────────────────
 
     public static double regressionSlope = 1.75;
-    public static double regressionIntercept = 1085.1;
+    public static double regressionIntercept = 1200;
 
     public static double MIN_TARGET_TPS = 0;
-    public static double MAX_TARGET_TPS = 1900;
+    public static double MAX_TARGET_TPS = 1600;
 
     // ─────────────────────────────────────────────────────────────────────────
     // At-speed checking
