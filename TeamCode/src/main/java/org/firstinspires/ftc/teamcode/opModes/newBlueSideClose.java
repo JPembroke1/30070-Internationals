@@ -42,7 +42,7 @@ public class newBlueSideClose extends OpMode {
     // Tuning note: adjust GOAL_OFFSET_X/Y if turret aim is consistently off.
     // ─────────────────────────────────────────────────────────────────────────
 
-    public static double GOAL_X = 0;
+    public static double GOAL_X = 6;
     public static double GOAL_Y = 138;
 
     public static double GOAL_OFFSET_X = 0;
