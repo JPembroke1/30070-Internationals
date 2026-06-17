@@ -11,8 +11,8 @@ import org.firstinspires.ftc.teamcode.opModes.subClasses.RobotHardware;
 import org.firstinspires.ftc.teamcode.opModes.subClasses.Turret;
 import org.firstinspires.ftc.teamcode.pedroPathing.Constants;
 
-@TeleOp(name = "Internationals Of The Teleops", group = "TeleOp")
-public class InternationalsOfTheTeleops extends OpMode {
+@TeleOp(name = "Blue Internationals TeleOp", group = "TeleOp")
+public class BlueTeleopsOfTheInternationals extends OpMode {
 
     // ─────────────────────────────────────────────────────────────────────────
     // Subsystems
@@ -25,53 +25,53 @@ public class InternationalsOfTheTeleops extends OpMode {
     private RobotHardware robotHardware;
 
     // ─────────────────────────────────────────────────────────────────────────
-    // Alliance / goal targeting
+    // Blue goal targeting
     //
     // Field coordinate notes:
     // - Pedro field coordinates are in inches.
+    // - This TeleOp is BLUE only.
     // - Blue inset goal estimate: X = 6, Y = 138.
-    // - Red inset goal estimate: X = 138, Y = 138.
+    //
+    // Controls:
+    // - gamepad2.dpad_up = force turret aim at blue goal.
+    // - gamepad2.dpad_right = reset live robot pose near blue goal.
     //
     // Tuning notes:
-    // - gamepad2.dpad_left/right adjusts GOAL_OFFSET_X live.
-    // - gamepad2.dpad_up/down adjusts GOAL_OFFSET_Y live.
-    // - gamepad2.left_stick_button resets both offsets to 0.
+    // - GOAL_OFFSET_X/Y lets you tune the goal aim point.
+    // - gamepad2.dpad_left moves target X negative.
+    // - gamepad2.dpad_down moves target Y negative.
+    // - gamepad2.left_stick_button resets offsets.
     // ─────────────────────────────────────────────────────────────────────────
-
-    public enum AllianceColour {
-        BLUE,
-        RED
-    }
-
-    public static AllianceColour allianceColour = AllianceColour.BLUE;
 
     public static double BLUE_GOAL_X = 6;
     public static double BLUE_GOAL_Y = 138;
 
-    public static double RED_GOAL_X = 138;
-    public static double RED_GOAL_Y = 138;
-
     public static double GOAL_OFFSET_X = 0;
     public static double GOAL_OFFSET_Y = 0;
-
     public static double GOAL_OFFSET_STEP = 0.5;
 
-    private boolean previousG2DpadLeft = false;
-    private boolean previousG2DpadRight = false;
+    // I am guessing here for the "in front of blue goal" reset pose.
+    // Adjust this after checking the real field position.
+    public static double BLUE_GOAL_RESET_X = 24;
+    public static double BLUE_GOAL_RESET_Y = 120;
+    public static double BLUE_GOAL_RESET_HEADING_DEG = 135;
+
     private boolean previousG2DpadUp = false;
+    private boolean previousG2DpadRight = false;
+    private boolean previousG2DpadLeft = false;
     private boolean previousG2DpadDown = false;
     private boolean previousG2LeftStickButton = false;
 
     // ─────────────────────────────────────────────────────────────────────────
     // Drive tuning
     //
-    // Control notes:
-    // - gamepad1.right_bumper = collect intake.
-    // - Slow mode has been removed.
+    // Controls:
+    // - gamepad1.right_bumper = intake collect only.
+    // - While collecting, blockers stay closed.
     //
     // Tuning notes:
     // - DRIVE_SPEED controls normal driver speed.
-    // - INTAKE_TURN_MULTIPLIER reduces turn only while intake collect is active.
+    // - INTAKE_TURN_MULTIPLIER reduces turn only while collecting.
     // ─────────────────────────────────────────────────────────────────────────
 
     public static double DRIVE_SPEED = 1.0;
@@ -81,31 +81,46 @@ public class InternationalsOfTheTeleops extends OpMode {
     // Shooter target tuning
     //
     // USE_STATIC_TARGET_TPS:
-    // - true = use STATIC_TARGET_TPS for shooter tuning.
+    // - true = use STATIC_TARGET_TPS.
     // - false = use distance-based linear regression.
+    //
+    // Controls:
+    // - gamepad2.x / square = turn shooter regression/static mode ON.
+    // - gamepad2.y / triangle = everything OFF and hood reset.
+    // - gamepad2.right_trigger = feed balls only.
     //
     // Tuning notes:
     // - Use static mode when tuning kV, kS and kP in Outtake.java.
     // - Use regression mode for normal match shooting.
-    // - Hood regression still runs from distance in both modes.
+    // - Hood regression runs while shooter is enabled.
     // ─────────────────────────────────────────────────────────────────────────
 
-    public static boolean USE_STATIC_TARGET_TPS = true;
+    public static boolean USE_STATIC_TARGET_TPS = false;
     public static double STATIC_TARGET_TPS = 1500;
+
+    private boolean shooterEnabled = false;
+
+    private boolean previousSquare = false;
+    private boolean previousTriangle = false;
+    private boolean previousLeftBumper = false;
 
     // ─────────────────────────────────────────────────────────────────────────
     // Intake / feed tuning
     //
     // gamepad1.right_bumper:
-    // - collection intake.
+    // - collect intake only.
+    // - blockers remain closed.
     //
     // gamepad2.right_trigger:
-    // - controlled shoot/feed into shooter.
+    // - feed balls into shooter.
+    // - only feeds if shooterEnabled is true.
     //
     // Tuning notes:
     // - SHOOT_INTAKE powers should feed balls smoothly into the shooter.
-    // - COLLECT_INTAKE powers can be more aggressive for collection.
+    // - COLLECT_INTAKE powers can be stronger for collection.
     // ─────────────────────────────────────────────────────────────────────────
+
+    public static double SHOOT_TRIGGER_THRESHOLD = 0.2;
 
     public static double SHOOT_INTAKE_LEFT_POWER = 0.7;
     public static double SHOOT_INTAKE_RIGHT_POWER = 0.9;
@@ -114,17 +129,15 @@ public class InternationalsOfTheTeleops extends OpMode {
     public static double COLLECT_INTAKE_RIGHT_POWER = 1.0;
 
     // ─────────────────────────────────────────────────────────────────────────
-    // TeleOp state
+    // Turret state
     //
-    // gamepad2.right_bumper toggles shooter on/off.
-    // gamepad2.left_bumper toggles auto-aim on/off.
+    // Controls:
+    // - gamepad2.left_bumper toggles auto-aim.
+    // - gamepad2.dpad_up forces auto-aim on.
+    // - gamepad2.b centres turret and disables auto-aim.
     // ─────────────────────────────────────────────────────────────────────────
 
-    private boolean shooterEnabled = false;
     private boolean autoAimEnabled = true;
-
-    private boolean previousRightBumper = false;
-    private boolean previousLeftBumper = false;
 
     // ─────────────────────────────────────────────────────────────────────────
     // Init
@@ -151,12 +164,14 @@ public class InternationalsOfTheTeleops extends OpMode {
 
         updateGoalTarget();
 
-        robotHardware.block();
+        shooterEnabled = false;
+        autoAimEnabled = true;
+
+        robotHardware.reset_all();
         intake.intakeStop();
         outtake.stopOuttake();
 
-        telemetry.addLine("TeleOp initialised");
-        telemetry.addData("Alliance", allianceColour);
+        telemetry.addLine("Blue TeleOp initialised");
         telemetry.addData("Goal X", "%.2f", getGoalPose().getX());
         telemetry.addData("Goal Y", "%.2f", getGoalPose().getY());
         telemetry.addData("Static TPS Mode", USE_STATIC_TARGET_TPS);
@@ -177,7 +192,7 @@ public class InternationalsOfTheTeleops extends OpMode {
         shooterEnabled = false;
         autoAimEnabled = true;
 
-        robotHardware.block();
+        robotHardware.reset_all();
         intake.intakeStop();
         outtake.stopOuttake();
     }
@@ -188,9 +203,10 @@ public class InternationalsOfTheTeleops extends OpMode {
 
     @Override
     public void loop() {
-        handleAllianceSelection();
         handleGoalOffsetTuning();
-        handleToggles();
+        handlePoseReset();
+        handleAutoAimControls();
+        handleShooterControls();
 
         updateGoalTarget();
 
@@ -236,11 +252,12 @@ public class InternationalsOfTheTeleops extends OpMode {
     public void stop() {
         PoseStorage.currentPose = follower.getPose();
 
+        shooterEnabled = false;
+
         outtake.stopOuttake();
         outtake.updatePIDF();
 
         intake.intakeStop();
-        robotHardware.block();
         robotHardware.reset_all();
     }
 
@@ -248,8 +265,7 @@ public class InternationalsOfTheTeleops extends OpMode {
     // Drive controls
     //
     // Tuning notes:
-    // - Slow mode has been removed.
-    // - gamepad1.right_bumper is intake collect.
+    // - gamepad1.right_bumper is intake collect only.
     // - While intake collect is active, only turn is reduced.
     // - Forward and strafe remain full speed.
     // ─────────────────────────────────────────────────────────────────────────
@@ -267,58 +283,129 @@ public class InternationalsOfTheTeleops extends OpMode {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // Toggles and manual overrides
+    // Shooter controls
+    //
+    // gamepad2.x / square:
+    // - turns shooter on.
+    // - shooter stays on until triangle/off.
+    //
+    // gamepad2.y / triangle:
+    // - turns everything off.
+    // - stops shooter.
+    // - stops intake.
+    // - closes blocker.
+    // - resets hood to RobotSettings.close through reset_all().
     // ─────────────────────────────────────────────────────────────────────────
 
-    private void handleToggles() {
-        boolean currentRightBumper = gamepad2.right_bumper;
-        boolean currentLeftBumper = gamepad2.left_bumper;
+    private void handleShooterControls() {
+        boolean currentSquare = gamepad2.x;
+        boolean currentTriangle = gamepad2.y;
 
-        if (currentRightBumper && !previousRightBumper) {
-            shooterEnabled = !shooterEnabled;
+        if (currentSquare && !previousSquare) {
+            shooterEnabled = true;
         }
+
+        if (currentTriangle && !previousTriangle) {
+            shooterEnabled = false;
+
+            outtake.stopOuttake();
+            intake.intakeStop();
+
+            robotHardware.reset_all();
+        }
+
+        previousSquare = currentSquare;
+        previousTriangle = currentTriangle;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Auto aim controls
+    //
+    // gamepad2.left_bumper:
+    // - toggles auto aim.
+    //
+    // gamepad2.dpad_up:
+    // - forces auto aim on.
+    // - immediately aims turret at blue goal.
+    //
+    // gamepad2.b:
+    // - centres turret.
+    // - disables auto aim.
+    // ─────────────────────────────────────────────────────────────────────────
+
+    private void handleAutoAimControls() {
+        boolean currentLeftBumper = gamepad2.left_bumper;
+        boolean currentDpadUp = gamepad2.dpad_up;
 
         if (currentLeftBumper && !previousLeftBumper) {
             autoAimEnabled = !autoAimEnabled;
         }
 
-        previousRightBumper = currentRightBumper;
-        previousLeftBumper = currentLeftBumper;
+        if (currentDpadUp && !previousG2DpadUp) {
+            autoAimEnabled = true;
+            updateGoalTarget();
+            turret.aimTurret(follower.getPose());
+        }
 
         if (gamepad2.b) {
             turret.centre();
+            autoAimEnabled = false;
         }
 
-        if (gamepad2.a) {
-            shooterEnabled = false;
-            outtake.stopOuttake();
-            robotHardware.block();
-            intake.intakeStop();
-        }
+        previousLeftBumper = currentLeftBumper;
+        previousG2DpadUp = currentDpadUp;
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // Alliance selection
+    // Live pose reset
+    //
+    // gamepad2.dpad_right:
+    // - resets the robot live pose to a blue-goal shooting pose.
+    //
+    // Important:
+    // - If follower.setPose(...) fails, your Pedro version uses a different
+    //   live pose reset method.
     // ─────────────────────────────────────────────────────────────────────────
 
-    private void handleAllianceSelection() {
-        if (gamepad1.dpad_left) {
-            allianceColour = AllianceColour.BLUE;
+    private void handlePoseReset() {
+        boolean currentDpadRight = gamepad2.dpad_right;
+
+        if (currentDpadRight && !previousG2DpadRight) {
+            Pose blueGoalResetPose = new Pose(
+                    BLUE_GOAL_RESET_X,
+                    BLUE_GOAL_RESET_Y,
+                    Math.toRadians(BLUE_GOAL_RESET_HEADING_DEG)
+            );
+
+            follower.setPose(blueGoalResetPose);
+            PoseStorage.currentPose = blueGoalResetPose;
+
+            autoAimEnabled = true;
+            updateGoalTarget();
+            turret.aimTurret(blueGoalResetPose);
         }
 
-        if (gamepad1.dpad_right) {
-            allianceColour = AllianceColour.RED;
-        }
+        previousG2DpadRight = currentDpadRight;
     }
 
     // ─────────────────────────────────────────────────────────────────────────
     // Live goal offset tuning
+    //
+    // Because dpad_up and dpad_right are now used for key match controls:
+    // - gamepad2.dpad_up = force turret aim.
+    // - gamepad2.dpad_right = reset live pose.
+    //
+    // Remaining offset controls:
+    // - gamepad2.dpad_left = reduce goal X.
+    // - gamepad2.dpad_down = reduce goal Y.
+    // - gamepad2.left_stick_button = reset offsets.
+    //
+    // If you need full +/- X and +/- Y tuning later, use unused buttons such as
+    // start/back or stick buttons.
     // ─────────────────────────────────────────────────────────────────────────
 
     private void handleGoalOffsetTuning() {
         boolean currentDpadLeft = gamepad2.dpad_left;
-        boolean currentDpadRight = gamepad2.dpad_right;
-        boolean currentDpadUp = gamepad2.dpad_up;
         boolean currentDpadDown = gamepad2.dpad_down;
         boolean currentLeftStickButton = gamepad2.left_stick_button;
 
@@ -326,16 +413,8 @@ public class InternationalsOfTheTeleops extends OpMode {
             GOAL_OFFSET_X -= GOAL_OFFSET_STEP;
         }
 
-        if (currentDpadRight && !previousG2DpadRight) {
-            GOAL_OFFSET_X += GOAL_OFFSET_STEP;
-        }
-
         if (currentDpadDown && !previousG2DpadDown) {
             GOAL_OFFSET_Y -= GOAL_OFFSET_STEP;
-        }
-
-        if (currentDpadUp && !previousG2DpadUp) {
-            GOAL_OFFSET_Y += GOAL_OFFSET_STEP;
         }
 
         if (currentLeftStickButton && !previousG2LeftStickButton) {
@@ -344,8 +423,6 @@ public class InternationalsOfTheTeleops extends OpMode {
         }
 
         previousG2DpadLeft = currentDpadLeft;
-        previousG2DpadRight = currentDpadRight;
-        previousG2DpadUp = currentDpadUp;
         previousG2DpadDown = currentDpadDown;
         previousG2LeftStickButton = currentLeftStickButton;
     }
@@ -354,34 +431,26 @@ public class InternationalsOfTheTeleops extends OpMode {
     // Intake and feed controls
     //
     // Priority order:
-    // 1. gamepad2.right_trigger = shoot/feed mode.
-    // 2. gamepad1.right_bumper = collect mode.
-    // 3. gamepad2.x = stop and block.
-    // 4. gamepad2.y = release blocker only.
-    // 5. Default = intake stopped and blocker closed.
+    // 1. gamepad2.right_trigger = feed into shooter only if shooter is on.
+    // 2. gamepad1.right_bumper = collect intake with blockers closed.
+    // 3. Default = intake stopped and blocker closed.
+    //
+    // Important:
+    // - right_trigger does not start shooter.
+    // - square starts shooter.
+    // - triangle stops everything.
     // ─────────────────────────────────────────────────────────────────────────
 
     private void handleIntakeAndFeedControls() {
-        if (gamepad2.right_trigger > 0.2) {
+        if (isFeedRequested() && shooterEnabled) {
             robotHardware.release();
             intake.intake(SHOOT_INTAKE_LEFT_POWER, SHOOT_INTAKE_RIGHT_POWER);
             return;
         }
 
         if (isCollectIntakeActive()) {
-            robotHardware.release();
-            intake.intake(COLLECT_INTAKE_LEFT_POWER, COLLECT_INTAKE_RIGHT_POWER);
-            return;
-        }
-
-        if (gamepad2.x) {
             robotHardware.block();
-            intake.intakeStop();
-            return;
-        }
-
-        if (gamepad2.y) {
-            robotHardware.release();
+            intake.intake(COLLECT_INTAKE_LEFT_POWER, COLLECT_INTAKE_RIGHT_POWER);
             return;
         }
 
@@ -391,6 +460,10 @@ public class InternationalsOfTheTeleops extends OpMode {
 
     private boolean isCollectIntakeActive() {
         return gamepad1.right_bumper;
+    }
+
+    private boolean isFeedRequested() {
+        return gamepad2.right_trigger > SHOOT_TRIGGER_THRESHOLD;
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -403,14 +476,6 @@ public class InternationalsOfTheTeleops extends OpMode {
     // ─────────────────────────────────────────────────────────────────────────
 
     private Pose getGoalPose() {
-        if (allianceColour == AllianceColour.RED) {
-            return new Pose(
-                    RED_GOAL_X + GOAL_OFFSET_X,
-                    RED_GOAL_Y + GOAL_OFFSET_Y,
-                    0
-            );
-        }
-
         return new Pose(
                 BLUE_GOAL_X + GOAL_OFFSET_X,
                 BLUE_GOAL_Y + GOAL_OFFSET_Y,
@@ -437,8 +502,19 @@ public class InternationalsOfTheTeleops extends OpMode {
     // ─────────────────────────────────────────────────────────────────────────
 
     private void updateTelemetry(Pose currentPose, double distCM) {
-        telemetry.addData("Alliance", allianceColour);
+        telemetry.addLine("Blue Internationals TeleOp");
+
+        telemetry.addLine("Controls");
+        telemetry.addData("Square / X", "Shooter ON");
+        telemetry.addData("Triangle / Y", "Everything OFF + hood reset");
+        telemetry.addData("G2 Right Trigger", "Feed only");
+        telemetry.addData("G1 Right Bumper", "Intake only, blockers closed");
+        telemetry.addData("G2 Dpad Up", "Force turret aim");
+        telemetry.addData("G2 Dpad Right", "Reset live pose");
+
+        telemetry.addLine("State");
         telemetry.addData("Shooter Enabled", shooterEnabled);
+        telemetry.addData("Feed Requested", isFeedRequested());
         telemetry.addData("Auto Aim Enabled", autoAimEnabled);
         telemetry.addData("Collect Intake Active", isCollectIntakeActive());
         telemetry.addData("Intake Turn Multiplier", "%.2f", INTAKE_TURN_MULTIPLIER);
@@ -450,6 +526,11 @@ public class InternationalsOfTheTeleops extends OpMode {
         telemetry.addData("Goal Offset Y", "%.2f", GOAL_OFFSET_Y);
         telemetry.addData("Offset Step", "%.2f", GOAL_OFFSET_STEP);
         telemetry.addData("Distance CM", "%.1f", distCM);
+
+        telemetry.addLine("Blue Goal Reset Pose");
+        telemetry.addData("Reset X", "%.2f", BLUE_GOAL_RESET_X);
+        telemetry.addData("Reset Y", "%.2f", BLUE_GOAL_RESET_Y);
+        telemetry.addData("Reset Heading", "%.1f", BLUE_GOAL_RESET_HEADING_DEG);
 
         telemetry.addLine("Shooter Target Mode");
         telemetry.addData("Static TPS Mode", USE_STATIC_TARGET_TPS);
@@ -466,6 +547,13 @@ public class InternationalsOfTheTeleops extends OpMode {
         telemetry.addData("Output", "%.3f", Outtake.lastOutput);
         telemetry.addData("At Speed %", outtake.isAtSpeed(0.95));
         telemetry.addData("At Speed Tol", outtake.isAtSpeedTolerance());
+
+        telemetry.addLine("Hood");
+        telemetry.addData("Last Raw Target", "%.3f", RobotHardware.lastRawHoodTarget);
+        telemetry.addData("Last Clipped Target", "%.3f", RobotHardware.lastClippedHoodTarget);
+        telemetry.addData("Last Commanded", "%.3f", RobotHardware.lastCommandedHood);
+        telemetry.addData("Filtered Distance", "%.1f", RobotHardware.filteredDistanceCM);
+        telemetry.addData("Hood Initialised", RobotHardware.hoodInitialised);
 
         telemetry.addLine("Pose");
         telemetry.addData("X", "%.2f", currentPose.getX());
