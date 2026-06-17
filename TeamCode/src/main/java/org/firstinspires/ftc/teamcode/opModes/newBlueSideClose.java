@@ -3,11 +3,11 @@ package org.firstinspires.ftc.teamcode.opModes;
 import com.pedropathing.follower.Follower;
 import com.pedropathing.geometry.BezierLine;
 import com.pedropathing.geometry.Pose;
+import com.pedropathing.ivy.Command;
 import com.pedropathing.ivy.Scheduler;
 import com.pedropathing.paths.PathChain;
 import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
 import com.qualcomm.robotcore.eventloop.opmode.OpMode;
-import com.qualcomm.robotcore.util.ElapsedTime;
 
 import org.firstinspires.ftc.teamcode.opModes.subClasses.Intake;
 import org.firstinspires.ftc.teamcode.opModes.subClasses.Outtake;
@@ -15,8 +15,21 @@ import org.firstinspires.ftc.teamcode.opModes.subClasses.RobotHardware;
 import org.firstinspires.ftc.teamcode.opModes.subClasses.Turret;
 import org.firstinspires.ftc.teamcode.pedroPathing.Constants;
 
-@Autonomous(name = "Blue Side Close", group = "Blue")
+import static com.pedropathing.ivy.Scheduler.schedule;
+import static com.pedropathing.ivy.commands.Commands.infinite;
+import static com.pedropathing.ivy.commands.Commands.instant;
+import static com.pedropathing.ivy.commands.Commands.waitMs;
+import static com.pedropathing.ivy.commands.Commands.waitUntil;
+import static com.pedropathing.ivy.groups.Groups.race;
+import static com.pedropathing.ivy.groups.Groups.sequential;
+import static com.pedropathing.ivy.pedro.PedroCommands.follow;
+
+@Autonomous(name = "Blue Side Close Comp", group = "Blue")
 public class newBlueSideClose extends OpMode {
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Subsystems
+    // ─────────────────────────────────────────────────────────────────────────
 
     private Follower follower;
     private Intake intake;
@@ -24,17 +37,46 @@ public class newBlueSideClose extends OpMode {
     private Turret turret;
     private RobotHardware robotHardware;
 
+    // ─────────────────────────────────────────────────────────────────────────
+    // Goal position
+    // Tuning note: adjust GOAL_OFFSET_X/Y if turret aim is consistently off.
+    // ─────────────────────────────────────────────────────────────────────────
+
     public static double GOAL_X = 0;
-    public static double GOAL_Y = 144;
+    public static double GOAL_Y = 138;
 
     public static double GOAL_OFFSET_X = 0;
     public static double GOAL_OFFSET_Y = 0;
 
-    // ── Shoot phase timing ───────────────────────────────────────────────────
-    // How long the robot holds position and fires at each shoot state
-    public static double SHOOT_DURATION_SECONDS = 2.0;
+    // ─────────────────────────────────────────────────────────────────────────
+    // Shooting and collection timing
+    // Tuning notes:
+    // - If first shot is weak, increase SHOOT_SETTLE_SECONDS.
+    // - If not all balls feed, increase SHOOT_FEED_SECONDS.
+    // - If gate collection is unreliable, increase GATE_COLLECT_SECONDS.
+    // ─────────────────────────────────────────────────────────────────────────
 
-    // ── Path timeouts ────────────────────────────────────────────────────────
+    public static double SHOOT_SETTLE_SECONDS = 0.35;
+    public static double SHOOT_FEED_SECONDS = 2.0;
+    public static double GATE_COLLECT_SECONDS = 2.0;
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Intake powers
+    // Tuning note: shooting feed power should usually be gentler than collection.
+    // ─────────────────────────────────────────────────────────────────────────
+
+    public static double SHOOT_INTAKE_LEFT_POWER = 1.0;
+    public static double SHOOT_INTAKE_RIGHT_POWER = 1.0;
+
+    public static double COLLECT_INTAKE_LEFT_POWER = 1.0;
+    public static double COLLECT_INTAKE_RIGHT_POWER = 1.0;
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Path timeouts
+    // Tuning note: reduce if auto waits too long after paths; increase if paths
+    // are being cut short before the robot reaches position.
+    // ─────────────────────────────────────────────────────────────────────────
+
     private static final double TIMEOUT_PATH_1 = 4.0;
     private static final double TIMEOUT_PATH_2 = 3.0;
     private static final double TIMEOUT_PATH_3 = 3.0;
@@ -43,43 +85,25 @@ public class newBlueSideClose extends OpMode {
     private static final double TIMEOUT_PATH_6 = 4.0;
     private static final double TIMEOUT_PATH_7 = 3.0;
     private static final double TIMEOUT_PATH_8 = 3.0;
-    private static final double TIMEOUT_DONE   = 3.0;
+    private static final double TIMEOUT_PATH_9 = 3.0;
 
-    // ── TPS spin-up ──────────────────────────────────────────────────────────
-    private static final double TPS_SPINUP_TIMEOUT  = 2.0;
+    // ─────────────────────────────────────────────────────────────────────────
+    // Shooter readiness
+    // Tuning note: 0.95 means shooter is ready at 95% of target TPS.
+    // Example: 1500 TPS target × 0.95 = 1425 TPS ready threshold.
+    // ─────────────────────────────────────────────────────────────────────────
+
+    private static final double TPS_SPINUP_TIMEOUT = 2.0;
     private static final double TPS_READY_THRESHOLD = 0.95;
-
-    // ── Timeout tracking ─────────────────────────────────────────────────────
-    private double pathStartTime = 0;
-    private double currentTimeout = 0;
-    private boolean lastTransitionWasTimeout = false;
 
     private double tpsWaitStartTime = 0;
     private boolean tpsTimeoutFired = false;
+    private boolean outtakeEnabled = true;
 
-    // ── Shoot timer ──────────────────────────────────────────────────────────
-    private final ElapsedTime shootTimer = new ElapsedTime();
+    // ─────────────────────────────────────────────────────────────────────────
+    // Field poses
+    // ─────────────────────────────────────────────────────────────────────────
 
-    // ── State machine ────────────────────────────────────────────────────────
-    private enum AutoState {
-        PATH_1,
-        SHOOT_1,
-        PATH_2,
-        PATH_3,
-        SHOOT_2,
-        PATH_4,
-        PATH_5,
-        PATH_6,
-        SHOOT_3,
-        PATH_7,
-        PATH_8,
-        SHOOT_4,
-        DONE
-    }
-
-    private AutoState state = AutoState.PATH_1;
-
-    // ── Field poses ──────────────────────────────────────────────────────────
     private final Pose startPose  = new Pose(21, 121, Math.toRadians(143));
     private final Pose Shoot      = new Pose(60, 80,  Math.toRadians(177));
     private final Pose Stack_1    = new Pose(17, 82,  Math.toRadians(177));
@@ -88,153 +112,123 @@ public class newBlueSideClose extends OpMode {
     private final Pose OverFlow   = new Pose(13, 60,  Math.toRadians(150));
     private final Pose End        = new Pose(50, 70,  Math.toRadians(0));
 
-    // ── Paths ────────────────────────────────────────────────────────────────
-    private PathChain pathToPos1, pathToPos2, pathToPos3, pathToPos4, pathToPos5;
-    private PathChain pathToPos6, pathToPos7, pathToPos8, pathToPos9;
-
     // ─────────────────────────────────────────────────────────────────────────
-    // Path helpers
+    // Path chains
     // ─────────────────────────────────────────────────────────────────────────
 
-    private void startPath(PathChain path, double timeoutSeconds) {
-        follower.followPath(path);
-        pathStartTime = getRuntime();
-        currentTimeout = timeoutSeconds;
-        lastTransitionWasTimeout = false;
+    private PathChain pathToPos1;
+    private PathChain pathToPos2;
+    private PathChain pathToPos3;
+    private PathChain pathToPos4;
+    private PathChain pathToPos5;
+    private PathChain pathToPos6;
+    private PathChain pathToPos7;
+    private PathChain pathToPos8;
+    private PathChain pathToPos9;
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Init
+    // ─────────────────────────────────────────────────────────────────────────
+
+    @Override
+    public void init() {
+        Scheduler.reset();
+
+        follower = Constants.createFollower(hardwareMap);
+        follower.setStartingPose(startPose);
+        buildPaths();
+
+        outtake = new Outtake();
+        intake = new Intake();
+        turret = new Turret();
+        robotHardware = new RobotHardware(hardwareMap);
+
+        outtake.init(hardwareMap);
+        intake.init(hardwareMap);
+        turret.init(hardwareMap);
+
+        updateGoalTarget();
     }
 
-    private boolean pathTimedOut() {
-        return (getRuntime() - pathStartTime) > currentTimeout;
-    }
+    @Override
+    public void init_loop() {
+        updateGoalTarget();
 
-    private boolean pathComplete() {
-        if (!follower.isBusy()) return true;
-
-        if (pathTimedOut()) {
-            lastTransitionWasTimeout = true;
-            return true;
-        }
-
-        return false;
+        double distCM = distanceToGoalCM();
+        outtake.linearRegression(distCM);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // Shooter helpers
+    // Start command schedule
     // ─────────────────────────────────────────────────────────────────────────
 
-    private void startTpsWait() {
-        tpsWaitStartTime = getRuntime();
+    @Override
+    public void start() {
+        Scheduler.reset();
+
+        robotHardware.reset_all();
+        turret.centre();
+
+        PoseStorage.currentPose = startPose;
+        updateGoalTarget();
+
+        outtakeEnabled = true;
         tpsTimeoutFired = false;
-    }
 
-    private boolean isShooterAtSpeed() {
-        return Outtake.target > 0 && Outtake.currentTPS >= Outtake.target * TPS_READY_THRESHOLD;
-    }
-
-    private boolean hasSpinUpTimedOut() {
-        return (getRuntime() - tpsWaitStartTime) > TPS_SPINUP_TIMEOUT;
-    }
-
-    private boolean shooterReadyOrTimedOut() {
-        if (isShooterAtSpeed()) return true;
-
-        if (hasSpinUpTimedOut()) {
-            tpsTimeoutFired = true;
-            return true;
-        }
-
-        return false;
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // Shoot state helpers
-    // ─────────────────────────────────────────────────────────────────────────
-
-    private void enterShootState() {
-        shootTimer.reset();
-        startTpsWait();
         stopIntakeAndBlock();
+
+        schedule(
+                infinite(this::robotPeriodic),
+
+                sequential(
+                        followWithTimeout(pathToPos1, TIMEOUT_PATH_1),
+                        shootCycle(),
+
+                        followWithTimeout(pathToPos2, TIMEOUT_PATH_2),
+                        followWithTimeout(pathToPos3, TIMEOUT_PATH_3),
+                        shootCycle(),
+
+                        followWithTimeout(pathToPos4, TIMEOUT_PATH_4),
+                        followCollectWithTimeout(pathToPos5, TIMEOUT_PATH_5),
+                        gateCollectWait(),
+
+                        followWithTimeout(pathToPos6, TIMEOUT_PATH_6),
+                        shootCycle(),
+
+                        followWithTimeout(pathToPos7, TIMEOUT_PATH_7),
+                        followWithTimeout(pathToPos8, TIMEOUT_PATH_8),
+                        shootCycle(),
+
+                        followWithTimeout(pathToPos9, TIMEOUT_PATH_9),
+                        instant(this::finishAuto)
+                )
+        );
     }
 
-    private boolean shootComplete() {
-        return shootTimer.seconds() >= SHOOT_DURATION_SECONDS;
+    @Override
+    public void loop() {
+        Scheduler.execute();
     }
 
-    private void runShootLogic() {
-        if (shooterReadyOrTimedOut()) {
-            robotHardware.release();
-            intake.intake(0.7, 0.9);
-        } else {
-            robotHardware.block();
-            intake.intakeStop();
-        }
-    }
+    @Override
+    public void stop() {
+        PoseStorage.currentPose = follower.getPose();
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // Goal / targeting helpers
-    // ─────────────────────────────────────────────────────────────────────────
+        outtakeEnabled = false;
+        outtake.stopOuttake();
+        outtake.updatePIDF();
 
-    private Pose getGoalPose() {
-        return new Pose(GOAL_X + GOAL_OFFSET_X, GOAL_Y + GOAL_OFFSET_Y, 0);
-    }
+        stopIntakeAndBlock();
+        robotHardware.reset_all();
 
-    private void updateGoalTarget() {
-        turret.setPose(getGoalPose());
-    }
-
-    private double distanceToGoalCM() {
-        Pose robotPose = follower.getPose();
-        Pose goalPose = getGoalPose();
-
-        double dx = goalPose.getX() - robotPose.getX();
-        double dy = goalPose.getY() - robotPose.getY();
-
-        return Math.hypot(dx, dy) * 2.54;
-    }
-
-    private double previewTurretServo() {
-        Pose robotPose = follower.getPose();
-        Pose goalPose = getGoalPose();
-
-        double dx = goalPose.getX() - robotPose.getX();
-        double dy = goalPose.getY() - robotPose.getY();
-
-        double targetAngle = Math.atan2(dy, dx);
-        double robotHeading = robotPose.getHeading();
-
-        double relativeAngle = targetAngle - robotHeading;
-        relativeAngle = Math.atan2(Math.sin(relativeAngle), Math.cos(relativeAngle));
-
-        double preview = 0.5 + (relativeAngle / Math.PI);
-        return Math.max(0.0, Math.min(1.0, preview));
-    }
-
-    private double previewTurretRelativeAngleDeg() {
-        Pose robotPose = follower.getPose();
-        Pose goalPose = getGoalPose();
-
-        double dx = goalPose.getX() - robotPose.getX();
-        double dy = goalPose.getY() - robotPose.getY();
-
-        double targetAngle = Math.atan2(dy, dx);
-        double robotHeading = robotPose.getHeading();
-
-        double relativeAngle = targetAngle - robotHeading;
-        relativeAngle = Math.atan2(Math.sin(relativeAngle), Math.cos(relativeAngle));
-
-        return Math.toDegrees(relativeAngle);
-    }
-
-    private void stopIntakeAndBlock() {
-        intake.intakeStop();
-        robotHardware.block();
+        Scheduler.reset();
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // Build paths
+    // Path building
     // ─────────────────────────────────────────────────────────────────────────
 
-    public void buildPaths() {
+    private void buildPaths() {
         pathToPos1 = follower.pathBuilder()
                 .addPath(new BezierLine(startPose, Shoot))
                 .setLinearHeadingInterpolation(startPose.getHeading(), Shoot.getHeading())
@@ -282,84 +276,69 @@ public class newBlueSideClose extends OpMode {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // Init
+    // Ivy command helpers
     // ─────────────────────────────────────────────────────────────────────────
 
-    @Override
-    public void init() {
-        Scheduler.reset();
+    private Command waitSeconds(double seconds) {
+        return waitMs(seconds * 1000.0);
+    }
 
-        follower = Constants.createFollower(hardwareMap);
-        follower.setStartingPose(startPose);
-        buildPaths();
+    private Command followWithTimeout(PathChain path, double timeoutSeconds) {
+        return race(
+                follow(follower, path),
+                waitSeconds(timeoutSeconds)
+        );
+    }
 
-        outtake = new Outtake();
-        intake = new Intake();
-        turret = new Turret();
-        robotHardware = new RobotHardware(hardwareMap);
+    private Command followCollectWithTimeout(PathChain path, double timeoutSeconds) {
+        return race(
+                followWithTimeout(path, timeoutSeconds),
+                infinite(this::runGateCollect)
+        );
+    }
 
-        outtake.init(hardwareMap);
-        intake.init(hardwareMap);
-        turret.init(hardwareMap);
+    private Command gateCollectWait() {
+        return sequential(
+                race(
+                        waitSeconds(GATE_COLLECT_SECONDS),
+                        infinite(this::runGateCollect)
+                ),
+                instant(this::stopIntakeAndBlock)
+        );
+    }
 
-        updateGoalTarget();
+    private Command shootCycle() {
+        return sequential(
+                instant(() -> {
+                    startTpsWait();
+                    stopIntakeAndBlock();
+                }),
 
-        telemetry.addLine("Initialised. Ready to start.");
-        telemetry.addData("Goal X", "%.2f", getGoalPose().getX());
-        telemetry.addData("Goal Y", "%.2f", getGoalPose().getY());
-        telemetry.update();
+                race(
+                        waitUntil(this::shooterReadyOrTimedOut),
+                        infinite(this::stopIntakeAndBlock)
+                ),
+
+                race(
+                        waitSeconds(SHOOT_SETTLE_SECONDS),
+                        infinite(this::stopIntakeAndBlock)
+                ),
+
+                race(
+                        waitSeconds(SHOOT_FEED_SECONDS),
+                        infinite(this::runShootFeed)
+                ),
+
+                instant(this::stopIntakeAndBlock)
+        );
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // Init loop
+    // Continuous robot update
+    // Keeps Pedro, pose, turret, hood and shooter active during all commands.
     // ─────────────────────────────────────────────────────────────────────────
 
-    @Override
-    public void init_loop() {
-        updateGoalTarget();
-
-        double distCM = distanceToGoalCM();
-
-        outtake.linearRegression(distCM);
-
-        double previewTurret = previewTurretServo();
-        double previewTurretAngleDeg = previewTurretRelativeAngleDeg();
-
-        double previewHood = (RobotHardware.hoodSlope * distCM) + RobotHardware.hoodIntercept;
-        previewHood = Math.max(RobotHardware.hoodMin, Math.min(RobotHardware.hoodMax, previewHood));
-
-        telemetry.addLine("─── Ready Check ───");
-        telemetry.addData("Distance to Goal (CM)", "%.1f", distCM);
-        telemetry.addData("Regression TPS Target", "%.0f", Outtake.target);
-        telemetry.addData("Hood Preview", "%.3f", previewHood);
-        telemetry.addData("Turret Preview", "%.3f (%.1f°)", previewTurret, previewTurretAngleDeg);
-        telemetry.addLine("Servos inactive until START");
-        telemetry.update();
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // Start
-    // ─────────────────────────────────────────────────────────────────────────
-
-    @Override
-    public void start() {
-        robotHardware.reset_all();
-        turret.centre();
-
-        PoseStorage.currentPose = startPose;
-        updateGoalTarget();
-
-        startPath(pathToPos1, TIMEOUT_PATH_1);
-        startTpsWait();
-        state = AutoState.PATH_1;
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // Loop
-    // ─────────────────────────────────────────────────────────────────────────
-
-    @Override
-    public void loop() {
+    private void robotPeriodic() {
         follower.update();
         updateGoalTarget();
 
@@ -369,229 +348,91 @@ public class newBlueSideClose extends OpMode {
         turret.aimTurret(currentPose);
 
         double distCM = distanceToGoalCM();
-        outtake.linearRegression(distCM);
-        robotHardware.linearHoodRegression(distCM);
+
+        if (outtakeEnabled) {
+            outtake.linearRegression(distCM);
+            robotHardware.linearHoodRegression(distCM);
+        } else {
+            outtake.stopOuttake();
+        }
 
         outtake.updatePIDF();
+    }
 
-        switch (state) {
+    private void finishAuto() {
+        outtakeEnabled = false;
 
-            case PATH_1:
-                // Drive to first shoot position
-                // Spin up shooter while driving
-                if (shooterReadyOrTimedOut()) {
-                    robotHardware.release();
-                    intake.intake(1, 1);
-                }
-
-                if (pathComplete()) {
-                    stopIntakeAndBlock();
-                    enterShootState();
-                    state = AutoState.SHOOT_1;
-                }
-                break;
-
-            case SHOOT_1:
-                // Stopped at Shoot - fire preload balls
-                runShootLogic();
-
-                if (shootComplete()) {
-                    stopIntakeAndBlock();
-                    startPath(pathToPos2, TIMEOUT_PATH_2);
-                    state = AutoState.PATH_2;
-                }
-                break;
-
-            case PATH_2:
-                // Drive to Stack_1
-                if (pathComplete()) {
-                    stopIntakeAndBlock();
-                    startPath(pathToPos3, TIMEOUT_PATH_3);
-                    startTpsWait();
-                    state = AutoState.PATH_3;
-                }
-                break;
-
-            case PATH_3:
-                // Drive back to Shoot from Stack_1
-                // Spin up shooter while returning
-                if (shooterReadyOrTimedOut()) {
-                    intake.intake(1, 1);
-                }
-
-                if (pathComplete()) {
-                    stopIntakeAndBlock();
-                    enterShootState();
-                    state = AutoState.SHOOT_2;
-                }
-                break;
-
-            case SHOOT_2:
-                // Stopped at Shoot - fire Stack_1 balls
-                runShootLogic();
-
-                if (shootComplete()) {
-                    stopIntakeAndBlock();
-                    startPath(pathToPos4, TIMEOUT_PATH_4);
-                    state = AutoState.PATH_4;
-                }
-                break;
-
-            case PATH_4:
-                // Drive to Stack_2
-                if (pathComplete()) {
-                    startPath(pathToPos5, TIMEOUT_PATH_5);
-                    startTpsWait();
-                    state = AutoState.PATH_5;
-                }
-                break;
-
-            case PATH_5:
-                // Eat Stack_2
-                if (shooterReadyOrTimedOut()) {
-                    intake.intake(1, 1);
-                    robotHardware.release();
-                } else {
-                    robotHardware.block();
-                }
-
-                if (pathComplete()) {
-                    stopIntakeAndBlock();
-                    startPath(pathToPos6, TIMEOUT_PATH_6);
-                    startTpsWait();
-                    state = AutoState.PATH_6;
-                }
-                break;
-
-            case PATH_6:
-                // Drive back to Shoot from Stack_2
-                // Spin up shooter while returning
-                if (shooterReadyOrTimedOut()) {
-                    intake.intake(1, 1);
-                }
-
-                if (pathComplete()) {
-                    stopIntakeAndBlock();
-                    enterShootState();
-                    state = AutoState.SHOOT_3;
-                }
-                break;
-
-            case SHOOT_3:
-                // Stopped at Shoot - fire Stack_2 balls
-                runShootLogic();
-
-                if (shootComplete()) {
-                    stopIntakeAndBlock();
-                    startPath(pathToPos7, TIMEOUT_PATH_7);
-                    startTpsWait();
-                    state = AutoState.PATH_7;
-                }
-                break;
-
-            case PATH_7:
-                // Drive to OverFlow
-                if (shooterReadyOrTimedOut()) {
-                    intake.intake(1, 1);
-                    robotHardware.release();
-                } else {
-                    robotHardware.block();
-                }
-
-                if (pathComplete()) {
-                    stopIntakeAndBlock();
-                    startPath(pathToPos8, TIMEOUT_PATH_8);
-                    startTpsWait();
-                    state = AutoState.PATH_8;
-                }
-                break;
-
-            case PATH_8:
-                // Drive back to Shoot from OverFlow
-                if (shooterReadyOrTimedOut()) {
-                    intake.intake(1, 1);
-                }
-
-                if (pathComplete()) {
-                    stopIntakeAndBlock();
-                    enterShootState();
-                    state = AutoState.SHOOT_4;
-                }
-                break;
-
-            case SHOOT_4:
-                // Stopped at Shoot - fire OverFlow balls
-                runShootLogic();
-
-                if (shootComplete()) {
-                    stopIntakeAndBlock();
-                    startPath(pathToPos9, TIMEOUT_DONE);
-                    state = AutoState.DONE;
-                }
-                break;
-
-            case DONE:
-                break;
-        }
-
-        // ── Telemetry ────────────────────────────────────────────────────────
-        Pose goalPose = getGoalPose();
-
-        double dxGoal = goalPose.getX() - currentPose.getX();
-        double dyGoal = goalPose.getY() - currentPose.getY();
-        double distanceInches = Math.hypot(dxGoal, dyGoal);
-
-        telemetry.addData("State", state);
-        telemetry.addData("Path Elapsed (s)", "%.1f / %.1f", getRuntime() - pathStartTime, currentTimeout);
-        telemetry.addData("Last Transition", lastTransitionWasTimeout ? "TIMEOUT" : "Normal");
-        telemetry.addData("Follower Busy", follower.isBusy());
-
-        if (state == AutoState.SHOOT_1 || state == AutoState.SHOOT_2
-                || state == AutoState.SHOOT_3 || state == AutoState.SHOOT_4) {
-            telemetry.addData("Shoot Timer (s)", "%.2f / %.2f",
-                    shootTimer.seconds(), SHOOT_DURATION_SECONDS);
-        }
-
-        telemetry.addLine("─── Shooter ───");
-        telemetry.addData("Distance (CM)", "%.1f", distCM);
-        telemetry.addData("Target TPS", "%.0f", Outtake.target);
-        telemetry.addData("Current TPS", "%.0f", Outtake.currentTPS);
-        telemetry.addData("Shooter At Speed", isShooterAtSpeed());
-        telemetry.addData("TPS Timeout Fired", tpsTimeoutFired);
-
-        telemetry.addLine("─── Hood ───");
-        telemetry.addData("Last Hood Cmd", "%.3f", RobotHardware.lastCommandedHood);
-        telemetry.addData("Filtered Dist CM", "%.2f", RobotHardware.filteredDistanceCM);
-
-        telemetry.addLine("─── Turret ───");
-        telemetry.addData("Relative Angle", "%.1f°", Turret.relativeAngleDeg);
-        telemetry.addData("Desired Servo", "%.3f", Turret.desiredServo);
-        telemetry.addData("Current Servo", "%.3f", Turret.currentServo);
-
-        telemetry.addLine("─── Goal / Pose ───");
-        telemetry.addData("Goal X", "%.2f", goalPose.getX());
-        telemetry.addData("Goal Y", "%.2f", goalPose.getY());
-        telemetry.addData("Distance (in)", "%.2f", distanceInches);
-
-        telemetry.addLine("─── Robot Pose ───");
-        telemetry.addData("X", "%.2f", currentPose.getX());
-        telemetry.addData("Y", "%.2f", currentPose.getY());
-        telemetry.addData("Heading", "%.1f°", Math.toDegrees(currentPose.getHeading()));
-
-        telemetry.update();
+        outtake.stopOuttake();
+        stopIntakeAndBlock();
+        robotHardware.reset_all();
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // Stop
+    // Shooter readiness helpers
     // ─────────────────────────────────────────────────────────────────────────
 
-    @Override
-    public void stop() {
-        PoseStorage.currentPose = follower.getPose();
+    private void startTpsWait() {
+        tpsWaitStartTime = getRuntime();
+        tpsTimeoutFired = false;
+    }
 
-        outtake.stopOuttake();
-        outtake.updatePIDF();
-        stopIntakeAndBlock();
-        robotHardware.reset_all();
+    private boolean hasSpinUpTimedOut() {
+        return (getRuntime() - tpsWaitStartTime) > TPS_SPINUP_TIMEOUT;
+    }
+
+    private boolean isShooterAtSpeed() {
+        return outtake.isAtSpeed(TPS_READY_THRESHOLD);
+    }
+
+    private boolean shooterReadyOrTimedOut() {
+        if (isShooterAtSpeed()) return true;
+
+        if (hasSpinUpTimedOut()) {
+            tpsTimeoutFired = true;
+            return true;
+        }
+
+        return false;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Intake and gate helpers
+    // ─────────────────────────────────────────────────────────────────────────
+
+    private void stopIntakeAndBlock() {
+        intake.intakeStop();
+        robotHardware.block();
+    }
+
+    private void runShootFeed() {
+        robotHardware.release();
+        intake.intake(SHOOT_INTAKE_LEFT_POWER, SHOOT_INTAKE_RIGHT_POWER);
+    }
+
+    private void runGateCollect() {
+        robotHardware.release();
+        intake.intake(COLLECT_INTAKE_LEFT_POWER, COLLECT_INTAKE_RIGHT_POWER);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Goal and distance helpers
+    // ─────────────────────────────────────────────────────────────────────────
+
+    private Pose getGoalPose() {
+        return new Pose(GOAL_X + GOAL_OFFSET_X, GOAL_Y + GOAL_OFFSET_Y, 0);
+    }
+
+    private void updateGoalTarget() {
+        turret.setPose(getGoalPose());
+    }
+
+    private double distanceToGoalCM() {
+        Pose robotPose = follower.getPose();
+        Pose goalPose = getGoalPose();
+
+        double dx = goalPose.getX() - robotPose.getX();
+        double dy = goalPose.getY() - robotPose.getY();
+
+        return Math.hypot(dx, dy) * 2.54;
     }
 }
