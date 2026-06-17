@@ -23,15 +23,13 @@ public class InternationalsOfTheTeleops extends LinearOpMode {
 
     public static double formulaResult = 1.75;
     public static double yIntercept = 633.333333;
-    public static double formulaResultHood = -0.002959;
-    public static double yInterceptHood = 0.552438;
 
     public static double distance = 0;
 
     public static boolean regressionEnabled = false;
 
     public static double GOAL_X = 0;
-    public static double GOAL_Y = 144;
+    public static double GOAL_Y = 138;
 
     public static double RESET_POSE_X = 21;
     public static double RESET_POSE_Y = 121;
@@ -44,6 +42,8 @@ public class InternationalsOfTheTeleops extends LinearOpMode {
     public static double MANUAL_TURRET_SERVO_POS = 0.5;
 
     public static boolean ENABLE_LIVE_POSE = true;
+
+    public static double HOOD_RESET_POSITION = 0.16;
 
     private RobotHardware robotHardware;
     private Intake intake;
@@ -97,7 +97,6 @@ public class InternationalsOfTheTeleops extends LinearOpMode {
         runtime.reset();
 
         while (opModeIsActive()) {
-
             for (LynxModule hub : hubs) {
                 hub.clearBulkCache();
             }
@@ -108,7 +107,7 @@ public class InternationalsOfTheTeleops extends LinearOpMode {
 
             turret.setPose(new Pose(GOAL_X + offsetX, GOAL_Y + offsetY, 0));
 
-            intake.update(runtime.milliseconds());
+            intake.update();
 
             handleDrive();
             handleRegressionButtons();
@@ -270,19 +269,25 @@ public class InternationalsOfTheTeleops extends LinearOpMode {
     private void handleRegressionButtons() {
         if (gamepad1.x) {
             regressionEnabled = true;
+
         } else if (gamepad1.y) {
-            regressionEnabled = false;
-            outtake.stopOuttake();
-            robotHardware.block();
+            if (regressionEnabled) {
+                regressionEnabled = false;
+                outtake.stopOuttake();
+                robotHardware.block();
+            } else {
+                robotHardware.setHoodPosition(HOOD_RESET_POSITION);
+            }
         }
     }
 
     private void handleIntake() {
         if (gamepad1.right_bumper) {
-            intake.intake(1, 1);
+            robotHardware.block();
+            intake.intake(1.0, 1.0);
 
         } else if (gamepad1.right_trigger > 0.6) {
-            if (regressionEnabled && intake.isBallReady()) {
+            if (regressionEnabled) {
                 robotHardware.release();
                 intake.intake(0.7, 0.9);
             } else {
@@ -330,7 +335,7 @@ public class InternationalsOfTheTeleops extends LinearOpMode {
         if (regressionEnabled) {
             double distanceCM = distance * 2.54;
             outtake.linearRegression(formulaResult, distanceCM, yIntercept);
-            robotHardware.linearHoodRegression(formulaResultHood, distanceCM, yInterceptHood);
+            robotHardware.linearHoodRegression(distanceCM);
         }
     }
 
@@ -348,8 +353,7 @@ public class InternationalsOfTheTeleops extends LinearOpMode {
         telemetry.addData("Status", "Running - %.1fs", runtime.seconds());
 
         telemetry.addLine("--- Ball Sensor ---");
-        telemetry.addData("Ball Ready", Intake.ballReady ? "YES" : "NO");
-        telemetry.addData("LED", Intake.ballReady ? "green" : "red");
+        telemetry.addData("Ball Detected", intake.isBallDetected() ? "YES" : "NO");
 
         telemetry.addLine("--- Field Pose ---");
         telemetry.addData("Field X", "%.2f", robotX);
@@ -377,6 +381,8 @@ public class InternationalsOfTheTeleops extends LinearOpMode {
         telemetry.addLine("--- Hood ---");
         telemetry.addData("Last Hood Cmd", "%.3f", RobotHardware.lastCommandedHood);
         telemetry.addData("Filtered Dist CM", "%.2f", RobotHardware.filteredDistanceCM);
+        telemetry.addData("Hood Initialised", RobotHardware.hoodInitialised);
+        telemetry.addData("Hood Reset Pos", "%.3f", HOOD_RESET_POSITION);
 
         telemetry.addLine("--- Drive ---");
         telemetry.addData("Axial", "%.3f", axial);
@@ -386,6 +392,14 @@ public class InternationalsOfTheTeleops extends LinearOpMode {
         telemetry.addData("FR", "%.3f", frontRightPower);
         telemetry.addData("BL", "%.3f", backLeftPower);
         telemetry.addData("BR", "%.3f", backRightPower);
+
+        telemetry.addLine("--- Controls ---");
+        telemetry.addData("G1 X", "Regression ON");
+        telemetry.addData("G1 Y", "Regression OFF or hood reset");
+        telemetry.addData("G1 Dpad Right", "Reset pose");
+        telemetry.addData("G1 Dpad Up", "Toggle aiming");
+        telemetry.addData("G1 RB", "Intake with block closed");
+        telemetry.addData("G1 RT", "Feed if regression on");
 
         telemetry.update();
     }

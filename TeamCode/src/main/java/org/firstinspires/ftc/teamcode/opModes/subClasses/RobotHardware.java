@@ -10,28 +10,38 @@ public class RobotHardware {
     public Servo hoodServo = null;
     public Servo blockServo = null;
 
-    public static double hoodSlope = -0.002959;
-    public static double hoodIntercept = 0.552438;
+    public static double hoodSlope = -0.0025;
+    public static double hoodIntercept = 0.9;
 
-    public static double hoodVelocityFactor = 0.05;
+    public static double hoodVelocityFactor = 0.01;
 
-    public static double hoodMin = 0.16;
-    public static double hoodMax = 0.55;
+
+    public static double hoodMin = 0.3;
+    public static double hoodMax = 0.9;
 
     public static double hoodDeadband = 0.001;
-    public static double hoodMaxStep = 0.02;
+    public static double hoodMaxStep = 0.04;
 
-    public static boolean useDistanceSmoothing = true;
+    public static boolean useDistanceSmoothing = false;
     public static double distanceAlpha = 0.4;
 
-    public static double lastCommandedHood = 0.5;
+    public static double lastCommandedHood = 0.20;
     public static double filteredDistanceCM = 0.0;
+
     public static boolean hoodInitialised = false;
+    public static boolean distanceFilterInitialised = false;
+
+    public static double lastRawHoodTarget = 0.0;
+    public static double lastClippedHoodTarget = 0.0;
 
     public RobotHardware(HardwareMap hardwareMap) {
         hoodServo = hardwareMap.get(Servo.class, "hoodServo");
         blockServo = hardwareMap.get(Servo.class, "blockServo");
+
+        //hoodServo.setDirection(Servo.Direction.REVERSE);
         blockServo.setDirection(Servo.Direction.REVERSE);
+
+        reset_all();
     }
 
     public void close_range() {
@@ -48,6 +58,8 @@ public class RobotHardware {
 
     public void setHoodPosition(double targetPosition) {
         double clipped = clamp(targetPosition, hoodMin, hoodMax);
+        lastRawHoodTarget = targetPosition;
+        lastClippedHoodTarget = clipped;
 
         if (!hoodInitialised) {
             lastCommandedHood = clipped;
@@ -77,13 +89,6 @@ public class RobotHardware {
         setHoodPosition(position);
     }
 
-    public void linearHoodRegression(double formula, double distanceCM, double yIntercept) {
-        double workingDistanceCM = filterDistance(distanceCM);
-        double velocityComp = calculateVelocityCompensation();
-        double position = (formula * workingDistanceCM) + yIntercept + velocityComp;
-        setHoodPosition(position);
-    }
-
     private double calculateVelocityCompensation() {
         if (Outtake.target <= 0) {
             return 0.0;
@@ -102,8 +107,9 @@ public class RobotHardware {
             return distanceCM;
         }
 
-        if (!hoodInitialised) {
+        if (!distanceFilterInitialised) {
             filteredDistanceCM = distanceCM;
+            distanceFilterInitialised = true;
         } else {
             filteredDistanceCM = (distanceAlpha * distanceCM) + ((1.0 - distanceAlpha) * filteredDistanceCM);
         }
@@ -121,8 +127,12 @@ public class RobotHardware {
 
     public void reset_all() {
         hoodInitialised = false;
+        distanceFilterInitialised = false;
         filteredDistanceCM = 0.0;
+
         lastCommandedHood = clamp(RobotSettings.close, hoodMin, hoodMax);
+        lastRawHoodTarget = lastCommandedHood;
+        lastClippedHoodTarget = lastCommandedHood;
 
         hoodServo.setPosition(lastCommandedHood);
         blockServo.setPosition(RobotSettings.block);

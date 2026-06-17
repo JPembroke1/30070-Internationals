@@ -19,13 +19,9 @@ public class Intake {
 
     public static double red = 0.277;
     public static double green = 0.5;
+    public static double detectTimeSeconds = 0.2;
 
-    public static double confirmTimeMS = 300;
-
-    public static boolean ballReady = false;
-
-    private double ballDetectStartTime = 0;
-    private boolean ballCurrentlyDetected = false;
+    private long detectionStartTime = -1;
 
     public void init(@NonNull HardwareMap hardwareMap) {
         intakeMotorFront = hardwareMap.get(DcMotor.class, "intakeMotorFront");
@@ -39,37 +35,31 @@ public class Intake {
 
         led = hardwareMap.get(Servo.class, "led");
         led.setPosition(red);
-
-        ballReady = false;
     }
 
-    public void update(double currentTimeMS) {
-        boolean sensorSeesBall = ballSensor.getState();
+    public void update() {
+        boolean ballDetected = isBallDetected();
 
-        if (sensorSeesBall) {
-            if (!ballCurrentlyDetected) {
-                ballDetectStartTime = currentTimeMS;
-                ballCurrentlyDetected = true;
+        if (ballDetected) {
+            if (detectionStartTime < 0) {
+                detectionStartTime = System.currentTimeMillis();
             }
 
-            if (currentTimeMS - ballDetectStartTime >= confirmTimeMS) {
-                ballReady = true;
+            double detectedTime = (System.currentTimeMillis() - detectionStartTime) / 1000.0;
+
+            if (detectedTime >= detectTimeSeconds) {
+                led.setPosition(green);
+            } else {
+                led.setPosition(red);
             }
         } else {
-            ballCurrentlyDetected = false;
-            ballDetectStartTime = 0;
-            ballReady = false;
-        }
-
-        if (ballReady) {
-            led.setPosition(green);
-        } else {
+            detectionStartTime = -1;
             led.setPosition(red);
         }
     }
 
-    public boolean isBallReady() {
-        return ballReady;
+    public boolean isBallDetected() {
+        return ballSensor.getState();
     }
 
     public void intake(double powerFront, double powerBack) {

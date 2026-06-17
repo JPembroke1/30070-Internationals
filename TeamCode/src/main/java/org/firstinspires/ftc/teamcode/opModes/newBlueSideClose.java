@@ -30,8 +30,11 @@ public class newBlueSideClose extends OpMode {
     public static double GOAL_OFFSET_X = 0;
     public static double GOAL_OFFSET_Y = 0;
 
+    // ── Shoot phase timing ───────────────────────────────────────────────────
+    // How long the robot holds position and fires at each shoot state
     public static double SHOOT_DURATION_SECONDS = 2.0;
 
+    // ── Path timeouts ────────────────────────────────────────────────────────
     private static final double TIMEOUT_PATH_1 = 4.0;
     private static final double TIMEOUT_PATH_2 = 3.0;
     private static final double TIMEOUT_PATH_3 = 3.0;
@@ -42,9 +45,11 @@ public class newBlueSideClose extends OpMode {
     private static final double TIMEOUT_PATH_8 = 3.0;
     private static final double TIMEOUT_DONE   = 3.0;
 
+    // ── TPS spin-up ──────────────────────────────────────────────────────────
     private static final double TPS_SPINUP_TIMEOUT  = 2.0;
     private static final double TPS_READY_THRESHOLD = 0.95;
 
+    // ── Timeout tracking ─────────────────────────────────────────────────────
     private double pathStartTime = 0;
     private double currentTimeout = 0;
     private boolean lastTransitionWasTimeout = false;
@@ -52,8 +57,10 @@ public class newBlueSideClose extends OpMode {
     private double tpsWaitStartTime = 0;
     private boolean tpsTimeoutFired = false;
 
+    // ── Shoot timer ──────────────────────────────────────────────────────────
     private final ElapsedTime shootTimer = new ElapsedTime();
 
+    // ── State machine ────────────────────────────────────────────────────────
     private enum AutoState {
         PATH_1,
         SHOOT_1,
@@ -72,6 +79,7 @@ public class newBlueSideClose extends OpMode {
 
     private AutoState state = AutoState.PATH_1;
 
+    // ── Field poses ──────────────────────────────────────────────────────────
     private final Pose startPose  = new Pose(21, 121, Math.toRadians(143));
     private final Pose Shoot      = new Pose(60, 80,  Math.toRadians(177));
     private final Pose Stack_1    = new Pose(17, 82,  Math.toRadians(177));
@@ -80,6 +88,7 @@ public class newBlueSideClose extends OpMode {
     private final Pose OverFlow   = new Pose(13, 60,  Math.toRadians(150));
     private final Pose End        = new Pose(50, 70,  Math.toRadians(0));
 
+    // ── Paths ────────────────────────────────────────────────────────────────
     private PathChain pathToPos1, pathToPos2, pathToPos3, pathToPos4, pathToPos5;
     private PathChain pathToPos6, pathToPos7, pathToPos8, pathToPos9;
 
@@ -311,7 +320,7 @@ public class newBlueSideClose extends OpMode {
 
         double distCM = distanceToGoalCM();
 
-        outtake.linearRegression(Outtake.regressionSlope, distCM, Outtake.regressionIntercept);
+        outtake.linearRegression(distCM);
 
         double previewTurret = previewTurretServo();
         double previewTurretAngleDeg = previewTurretRelativeAngleDeg();
@@ -357,12 +366,11 @@ public class newBlueSideClose extends OpMode {
         Pose currentPose = follower.getPose();
         PoseStorage.currentPose = currentPose;
 
-        // Turret + shooter + hood all run every loop
         turret.aimTurret(currentPose);
 
         double distCM = distanceToGoalCM();
-        outtake.linearRegression(Outtake.regressionSlope, distCM, Outtake.regressionIntercept);
-        robotHardware.linearHoodRegression(RobotHardware.hoodSlope, distCM, RobotHardware.hoodIntercept);
+        outtake.linearRegression(distCM);
+        robotHardware.linearHoodRegression(distCM);
 
         outtake.updatePIDF();
 
@@ -370,7 +378,12 @@ public class newBlueSideClose extends OpMode {
 
             case PATH_1:
                 // Drive to first shoot position
-                // No shooting while moving
+                // Spin up shooter while driving
+                if (shooterReadyOrTimedOut()) {
+                    robotHardware.release();
+                    intake.intake(1, 1);
+                }
+
                 if (pathComplete()) {
                     stopIntakeAndBlock();
                     enterShootState();
@@ -391,9 +404,6 @@ public class newBlueSideClose extends OpMode {
 
             case PATH_2:
                 // Drive to Stack_1
-                // Intake on to collect while driving
-                intake.intake(1, 1);
-
                 if (pathComplete()) {
                     stopIntakeAndBlock();
                     startPath(pathToPos3, TIMEOUT_PATH_3);
@@ -404,7 +414,11 @@ public class newBlueSideClose extends OpMode {
 
             case PATH_3:
                 // Drive back to Shoot from Stack_1
-                // No shooting while moving
+                // Spin up shooter while returning
+                if (shooterReadyOrTimedOut()) {
+                    intake.intake(1, 1);
+                }
+
                 if (pathComplete()) {
                     stopIntakeAndBlock();
                     enterShootState();
@@ -433,8 +447,13 @@ public class newBlueSideClose extends OpMode {
                 break;
 
             case PATH_5:
-                // Eat Stack_2 - intake collecting
-                intake.intake(1, 1);
+                // Eat Stack_2
+                if (shooterReadyOrTimedOut()) {
+                    intake.intake(1, 1);
+                    robotHardware.release();
+                } else {
+                    robotHardware.block();
+                }
 
                 if (pathComplete()) {
                     stopIntakeAndBlock();
@@ -446,7 +465,11 @@ public class newBlueSideClose extends OpMode {
 
             case PATH_6:
                 // Drive back to Shoot from Stack_2
-                // No shooting while moving
+                // Spin up shooter while returning
+                if (shooterReadyOrTimedOut()) {
+                    intake.intake(1, 1);
+                }
+
                 if (pathComplete()) {
                     stopIntakeAndBlock();
                     enterShootState();
@@ -467,8 +490,13 @@ public class newBlueSideClose extends OpMode {
                 break;
 
             case PATH_7:
-                // Drive to OverFlow - intake collecting
-                intake.intake(1, 1);
+                // Drive to OverFlow
+                if (shooterReadyOrTimedOut()) {
+                    intake.intake(1, 1);
+                    robotHardware.release();
+                } else {
+                    robotHardware.block();
+                }
 
                 if (pathComplete()) {
                     stopIntakeAndBlock();
@@ -480,7 +508,10 @@ public class newBlueSideClose extends OpMode {
 
             case PATH_8:
                 // Drive back to Shoot from OverFlow
-                // No shooting while moving
+                if (shooterReadyOrTimedOut()) {
+                    intake.intake(1, 1);
+                }
+
                 if (pathComplete()) {
                     stopIntakeAndBlock();
                     enterShootState();
@@ -511,8 +542,7 @@ public class newBlueSideClose extends OpMode {
         double distanceInches = Math.hypot(dxGoal, dyGoal);
 
         telemetry.addData("State", state);
-        telemetry.addData("Path Elapsed (s)", "%.1f / %.1f",
-                getRuntime() - pathStartTime, currentTimeout);
+        telemetry.addData("Path Elapsed (s)", "%.1f / %.1f", getRuntime() - pathStartTime, currentTimeout);
         telemetry.addData("Last Transition", lastTransitionWasTimeout ? "TIMEOUT" : "Normal");
         telemetry.addData("Follower Busy", follower.isBusy());
 

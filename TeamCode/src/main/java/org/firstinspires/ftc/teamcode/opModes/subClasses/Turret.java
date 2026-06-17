@@ -13,8 +13,8 @@ public class Turret {
     public Servo rotationalTurretServo = null;
 
     // ── Hold tuning ──────────────────────────────────────────────────────────
-    public static double kP = 0.40;
-    public static double maxStep = 0.16;
+    public static double kP = 1.3;
+    public static double maxStep = 0.02;
     public static double largeErrorThreshold = 0.10;
     public static boolean useLargeErrorFastMode = true;
 

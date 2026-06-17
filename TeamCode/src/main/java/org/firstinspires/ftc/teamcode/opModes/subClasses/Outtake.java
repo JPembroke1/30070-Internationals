@@ -19,16 +19,16 @@ public class Outtake {
     public static double target = 0;
     public static double currentTPS = 0;
 
-    public static double P = 0.003;
+    public static double P = 0.0027;
     public static double I = 0.0;
     public static double D = 0.0;
-    public static double F = 0.003;
+    public static double F = 0.0027;
 
     public static double regressionSlope = 1.75;
     public static double regressionIntercept = 633.333333;
 
     public static double MIN_TARGET_TPS = 0;
-    public static double MAX_TARGET_TPS = 2500;
+    public static double MAX_TARGET_TPS = 1900;
 
     public static double distanceToGoal = 0;
 
