@@ -7,6 +7,7 @@ import com.pedropathing.geometry.Pose;
 import com.pedropathing.ivy.Command;
 import com.pedropathing.ivy.Scheduler;
 import com.pedropathing.paths.PathChain;
+import com.qualcomm.hardware.lynx.LynxModule;
 import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
 import com.qualcomm.robotcore.eventloop.opmode.OpMode;
 
@@ -15,6 +16,8 @@ import org.firstinspires.ftc.teamcode.opModes.subClasses.Outtake;
 import org.firstinspires.ftc.teamcode.opModes.subClasses.RobotHardware;
 import org.firstinspires.ftc.teamcode.opModes.subClasses.Turret;
 import org.firstinspires.ftc.teamcode.pedroPathing.Constants;
+
+import java.util.List;
 
 import static com.pedropathing.ivy.Scheduler.schedule;
 import static com.pedropathing.ivy.commands.Commands.infinite;
@@ -29,41 +32,26 @@ import static com.pedropathing.ivy.pedro.PedroCommands.follow;
 @Autonomous(name = "Gate Blue", group = "Blue")
 public class gateBlueClose extends OpMode {
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // Subsystems
-    // ─────────────────────────────────────────────────────────────────────────
-
     private Follower follower;
     private Intake intake;
     private Outtake outtake;
     private Turret turret;
     private RobotHardware robotHardware;
 
+    private List<LynxModule> allHubs;
 
     public static double GOAL_X = 6.0;
     public static double GOAL_Y = 138.0;
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // Shooting and collection timing
-    // ─────────────────────────────────────────────────────────────────────────
-
     public static double SHOOT_SETTLE_SECONDS = 0.5;
     public static double SHOOT_FEED_SECONDS = 1.0;
     public static double GATE_COLLECT_SECONDS = 2.0;
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // Intake powers
-    // ─────────────────────────────────────────────────────────────────────────
 
     public static double SHOOT_INTAKE_LEFT_POWER = 1.0;
     public static double SHOOT_INTAKE_RIGHT_POWER = 1.0;
 
     public static double COLLECT_INTAKE_LEFT_POWER = 1.0;
     public static double COLLECT_INTAKE_RIGHT_POWER = 1.0;
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // Path timeouts
-    // ─────────────────────────────────────────────────────────────────────────
 
     public static double TIMEOUT_PATH_1 = 2.0;
     public static double TIMEOUT_PATH_2 = 3.0;
@@ -76,14 +64,12 @@ public class gateBlueClose extends OpMode {
     public static double TIMEOUT_PATH_9 = 2.0;
     public static double TIMEOUT_PATH_10 = 3.0;
 
-
     public static double TPS_SPINUP_TIMEOUT = 1.0;
     public static double TPS_READY_THRESHOLD = 0.95;
 
     private double tpsWaitStartTime = 0.0;
     private boolean tpsTimeoutFired = false;
     private boolean outtakeEnabled = true;
-
 
     public static boolean USE_POSE_DELTA_VELOCITY = true;
     public static double VELOCITY_SMOOTHING_ALPHA = 0.35;
@@ -98,13 +84,7 @@ public class gateBlueClose extends OpMode {
     private double estimatedVelocityY = 0.0;
 
     private double velocityDt = 0.0;
-
-
     private double currentDistanceCM = 0.0;
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // Field poses
-    // ─────────────────────────────────────────────────────────────────────────
 
     private final Pose startPose = new Pose(21, 123, Math.toRadians(145));
     private final Pose shootPose = new Pose(60, 86, Math.toRadians(180));
@@ -117,10 +97,6 @@ public class gateBlueClose extends OpMode {
     private final Pose overflowPose = new Pose(15, 58, Math.toRadians(145));
     private final Pose endPose = new Pose(59, 101, Math.toRadians(145));
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // Path chains
-    // ─────────────────────────────────────────────────────────────────────────
-
     private PathChain pathToShoot;
     private PathChain pathToStack2;
     private PathChain pathToCollectStack2;
@@ -132,13 +108,15 @@ public class gateBlueClose extends OpMode {
     private PathChain pathToStack1;
     private PathChain pathToEnd;
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // Init
-    // ─────────────────────────────────────────────────────────────────────────
-
     @Override
     public void init() {
         Scheduler.reset();
+
+        configureBulkCaching();
+        clearBulkCache();
+
+        PoseStorage.setBlue();
+        PoseStorage.setPose(startPose);
 
         follower = Constants.createFollower(hardwareMap);
         follower.setStartingPose(startPose);
@@ -166,34 +144,44 @@ public class gateBlueClose extends OpMode {
         currentDistanceCM = distanceToGoalCM(startPose);
 
         telemetry.addLine("Gate Blue Initialised");
+        telemetry.addData("Alliance Stored", PoseStorage.lastAlliance);
+        telemetry.addData("Bulk Caching", "MANUAL");
         telemetry.update();
     }
 
     @Override
     public void init_loop() {
+        clearBulkCache();
+
+        PoseStorage.setBlue();
         updateGoalTarget();
 
         Pose currentPose = follower.getPose();
-        PoseStorage.currentPose = currentPose;
+        PoseStorage.setPose(currentPose);
 
         currentDistanceCM = distanceToGoalCM(currentPose);
 
         updateShooterRegressionAndPIDF(currentPose);
 
+        telemetry.addLine("Gate Blue Init Loop");
+        telemetry.addData("Alliance Stored", PoseStorage.lastAlliance);
+        telemetry.addData("Distance CM", "%.1f", currentDistanceCM);
+        telemetry.addData("Target TPS", "%.0f", Outtake.target);
+        telemetry.addData("Current TPS", "%.0f", Outtake.currentTPS);
+        telemetry.update();
     }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // Start
-    // ─────────────────────────────────────────────────────────────────────────
 
     @Override
     public void start() {
         Scheduler.reset();
 
+        clearBulkCache();
+
+        PoseStorage.setBlue();
+        PoseStorage.setPose(startPose);
+
         robotHardware.reset_all();
         turret.setForward();
-
-        PoseStorage.currentPose = startPose;
 
         resetVelocityEstimator(startPose);
         updateGoalTarget();
@@ -249,25 +237,16 @@ public class gateBlueClose extends OpMode {
         );
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // Main loop
-    //
-    // Scheduler.execute() runs:
-    // - robotPeriodic()
-    // - active path commands
-    // - active intake/shooter commands
-    //
-    // Telemetry only reads stored values.
-    // It does not call follower.getPose().
-    // ─────────────────────────────────────────────────────────────────────────
-
     @Override
     public void loop() {
+        clearBulkCache();
+
         Scheduler.execute();
 
         telemetry.addLine("Gate Blue Auto");
 
         telemetry.addLine("State");
+        telemetry.addData("Alliance Stored", PoseStorage.lastAlliance);
         telemetry.addData("Outtake Enabled", outtakeEnabled);
         telemetry.addData("TPS Timeout Fired", tpsTimeoutFired);
         telemetry.addData("At Speed", outtake.isAtSpeed(TPS_READY_THRESHOLD));
@@ -296,13 +275,12 @@ public class gateBlueClose extends OpMode {
         telemetry.update();
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // Stop
-    // ─────────────────────────────────────────────────────────────────────────
-
     @Override
     public void stop() {
-        PoseStorage.currentPose = follower.getPose();
+        clearBulkCache();
+
+        PoseStorage.setBlue();
+        PoseStorage.setPose(follower.getPose());
 
         outtakeEnabled = false;
 
@@ -317,9 +295,23 @@ public class gateBlueClose extends OpMode {
         Scheduler.reset();
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // Path building
-    // ─────────────────────────────────────────────────────────────────────────
+    private void configureBulkCaching() {
+        allHubs = hardwareMap.getAll(LynxModule.class);
+
+        for (LynxModule hub : allHubs) {
+            hub.setBulkCachingMode(LynxModule.BulkCachingMode.MANUAL);
+        }
+    }
+
+    private void clearBulkCache() {
+        if (allHubs == null) {
+            return;
+        }
+
+        for (LynxModule hub : allHubs) {
+            hub.clearBulkCache();
+        }
+    }
 
     private void buildPaths() {
         pathToShoot = follower.pathBuilder()
@@ -373,12 +365,8 @@ public class gateBlueClose extends OpMode {
                 .build();
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // Ivy command helpers
-    // ─────────────────────────────────────────────────────────────────────────
-
     private Command waitSeconds(double seconds) {
-        return waitMs(Math.round(seconds * 1000.0));
+        return waitMs(seconds * 1000.0);
     }
 
     private Command followWithTimeout(PathChain path, double timeoutSeconds) {
@@ -398,8 +386,7 @@ public class gateBlueClose extends OpMode {
     private Command gateCollectWait() {
         return sequential(
                 instant(() -> {
-                    Pose currentPose = PoseStorage.currentPose;
-                    updateShooterRegressionAndPIDF(currentPose);
+                    updateShooterRegressionAndPIDF(PoseStorage.currentPose);
 
                     robotHardware.block();
                     intake.intake(COLLECT_INTAKE_LEFT_POWER, COLLECT_INTAKE_RIGHT_POWER);
@@ -408,8 +395,7 @@ public class gateBlueClose extends OpMode {
                 waitSeconds(GATE_COLLECT_SECONDS),
 
                 instant(() -> {
-                    Pose currentPose = PoseStorage.currentPose;
-                    updateShooterRegressionAndPIDF(currentPose);
+                    updateShooterRegressionAndPIDF(PoseStorage.currentPose);
 
                     intake.intakeStop();
                     robotHardware.block();
@@ -424,8 +410,7 @@ public class gateBlueClose extends OpMode {
 
                     outtakeEnabled = true;
 
-                    Pose currentPose = PoseStorage.currentPose;
-                    updateShooterRegressionAndPIDF(currentPose);
+                    updateShooterRegressionAndPIDF(PoseStorage.currentPose);
 
                     stopIntakeAndBlock();
                 }),
@@ -449,26 +434,11 @@ public class gateBlueClose extends OpMode {
         );
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // Continuous robot update
-    //
-    // This is the main timing-critical update.
-    //
-    // Order:
-    // 1. follower.update()
-    // 2. read currentPose once
-    // 3. update pose storage
-    // 4. update velocity from same pose
-    // 5. calculate distance from same pose
-    // 6. aim turret from same pose
-    // 7. update shooter and hood from same distance
-    // ─────────────────────────────────────────────────────────────────────────
-
     private void robotPeriodic() {
         follower.update();
 
         Pose currentPose = follower.getPose();
-        PoseStorage.currentPose = currentPose;
+        PoseStorage.setPose(currentPose);
 
         updateEstimatedVelocity(currentPose);
 
@@ -502,13 +472,6 @@ public class gateBlueClose extends OpMode {
         turret.setForward();
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // Shooter update helper
-    //
-    // Uses the pose already sampled by robotPeriodic().
-    // Does not call follower.getPose().
-    // ─────────────────────────────────────────────────────────────────────────
-
     private void updateShooterRegressionAndPIDF(Pose robotPose) {
         currentDistanceCM = distanceToGoalCM(robotPose);
 
@@ -517,10 +480,6 @@ public class gateBlueClose extends OpMode {
 
         outtake.updatePIDF();
     }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // Shooter readiness helpers
-    // ─────────────────────────────────────────────────────────────────────────
 
     private void startTpsWait() {
         tpsWaitStartTime = getRuntime();
@@ -536,9 +495,7 @@ public class gateBlueClose extends OpMode {
     }
 
     private boolean shooterReadyOrTimedOut() {
-        Pose currentPose = PoseStorage.currentPose;
-
-        updateShooterRegressionAndPIDF(currentPose);
+        updateShooterRegressionAndPIDF(PoseStorage.currentPose);
 
         if (isShooterAtSpeed()) {
             return true;
@@ -552,53 +509,31 @@ public class gateBlueClose extends OpMode {
         return false;
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // Intake and gate helpers
-    //
-    // Collection:
-    // - blocker closed
-    // - intake on
-    //
-    // Shooting:
-    // - blocker released
-    // - intake on
-    // ─────────────────────────────────────────────────────────────────────────
-
     private void stopIntakeAndBlock() {
         intake.intakeStop();
         robotHardware.block();
     }
 
     private void holdShooterAndBlock() {
-        Pose currentPose = PoseStorage.currentPose;
-
-        updateShooterRegressionAndPIDF(currentPose);
+        updateShooterRegressionAndPIDF(PoseStorage.currentPose);
 
         intake.intakeStop();
         robotHardware.block();
     }
 
     private void runShootFeed() {
-        Pose currentPose = PoseStorage.currentPose;
-
-        updateShooterRegressionAndPIDF(currentPose);
+        updateShooterRegressionAndPIDF(PoseStorage.currentPose);
 
         robotHardware.release();
         intake.intake(SHOOT_INTAKE_LEFT_POWER, SHOOT_INTAKE_RIGHT_POWER);
     }
 
     private void runGateCollect() {
-        Pose currentPose = PoseStorage.currentPose;
-
-        updateShooterRegressionAndPIDF(currentPose);
+        updateShooterRegressionAndPIDF(PoseStorage.currentPose);
 
         robotHardware.block();
         intake.intake(COLLECT_INTAKE_LEFT_POWER, COLLECT_INTAKE_RIGHT_POWER);
     }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // Velocity estimation
-    // ─────────────────────────────────────────────────────────────────────────
 
     private void resetVelocityEstimator(Pose pose) {
         previousVelocityPose = pose;
@@ -656,10 +591,6 @@ public class gateBlueClose extends OpMode {
         previousVelocityTime = currentTime;
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // Goal and distance helpers
-    // ─────────────────────────────────────────────────────────────────────────
-
     private Pose getGoalPose() {
         return new Pose(
                 GOAL_X,
@@ -684,10 +615,6 @@ public class gateBlueClose extends OpMode {
 
         return Math.hypot(dx, dy) * 2.54;
     }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // Utility
-    // ─────────────────────────────────────────────────────────────────────────
 
     private double clamp01(double value) {
         return Math.max(0.0, Math.min(1.0, value));

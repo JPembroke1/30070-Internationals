@@ -4,31 +4,49 @@ import com.pedropathing.geometry.Pose;
 
 public class PoseStorage {
 
-    public static Pose currentPose = null;
+    public enum Alliance {
+        BLUE,
+        RED,
+        UNKNOWN
+    }
 
-    public static void clear() {
-        currentPose = null;
+    public static Pose currentPose = null;
+    public static Alliance lastAlliance = Alliance.UNKNOWN;
+
+    public static void setBlue() {
+        lastAlliance = Alliance.BLUE;
+    }
+
+    public static void setRed() {
+        lastAlliance = Alliance.RED;
+    }
+
+    public static void setUnknown() {
+        lastAlliance = Alliance.UNKNOWN;
     }
 
     public static void setPose(Pose pose) {
-        if (pose == null) {
-            currentPose = null;
-        } else {
-            currentPose = new Pose(
-                    pose.getX(),
-                    pose.getY(),
-                    pose.getHeading()
-            );
-        }
+        currentPose = pose;
     }
 
-    public static Pose getPose() {
-        if (currentPose == null) return null;
+    public static void clearPose() {
+        currentPose = null;
+    }
 
-        return new Pose(
-                currentPose.getX(),
-                currentPose.getY(),
-                currentPose.getHeading()
-        );
+    public static boolean isBlue() {
+        return lastAlliance == Alliance.BLUE;
+    }
+
+    public static boolean isRed() {
+        return lastAlliance == Alliance.RED;
+    }
+
+    public static boolean isUnknown() {
+        return lastAlliance == Alliance.UNKNOWN;
+    }
+
+    public static void clearAll() {
+        currentPose = null;
+        lastAlliance = Alliance.UNKNOWN;
     }
 }
