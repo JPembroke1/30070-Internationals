@@ -27,9 +27,9 @@ public class Outtake {
     // ─────────────────────────────────────────────────────────────────────────
 
     public static double regressionSlope = 1.5;
-    public static double regressionIntercept = 1560.0;
+    public static double regressionIntercept = 1430.0;
 
-    public static double minTargetTPS = 800.0;
+    public static double minTargetTPS = 1000.0;
     public static double maxTargetTPS = 1900.0;
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -42,9 +42,9 @@ public class Outtake {
     // 4. Leave kI and kD at 0 unless needed
     // ─────────────────────────────────────────────────────────────────────────
 
-    public static double kV = 0.00038;
+    public static double kV = 0.00039;
     public static double kS = 0.06;
-    public static double kP = 0.0004;
+    public static double kP = 0.0007;
     public static double kI = 0.0;
     public static double kD = 0.0;
 
