@@ -31,7 +31,7 @@ public class Intake {
 
     private long detectionStartTime = -1;
 
-    public void init(@NonNull HardwareMap hardwareMap) {
+    public void init(HardwareMap hardwareMap) {
         intakeMotorFront = hardwareMap.get(DcMotor.class, "intakeMotorFront");
         intakeMotorBack = hardwareMap.get(DcMotor.class, "intakeMotorBack");
 

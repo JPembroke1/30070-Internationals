@@ -13,7 +13,7 @@ public class RobotHardware {
     public static double hoodSlope = -0.00365;
     public static double hoodIntercept = 0.8;
 
-    public static double hoodVelocityFactor = 9;
+    public static double hoodVelocityFactor = 0.9;
 
 
     public static double hoodMin = 0.3;
