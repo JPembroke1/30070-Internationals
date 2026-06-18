@@ -15,8 +15,8 @@ import org.firstinspires.ftc.teamcode.pedroPathing.Constants;
 import java.util.Locale;
 
 @Configurable
-@TeleOp(name = "Blue Internationals TeleOp", group = "Main TeleOp")
-public class BlueTeleOp extends OpMode {
+@TeleOp(name = "Red Internationals TeleOp", group = "Main TeleOp")
+public class RedTeleOp extends OpMode {
 
     // ─────────────────────────────────────────────────────────────────────────
     // Subsystems
@@ -29,29 +29,32 @@ public class BlueTeleOp extends OpMode {
     private RobotHardware robotHardware;
 
     // ─────────────────────────────────────────────────────────────────────────
-    // TeleOp goal tuneables
+    // Red TeleOp goal tuneables
     //
-    // Used for:
-    // - turret target
-    // - shooter distance
-    // - hood regression distance
+    // Mirrored from blue side:
+    // Blue goal: X = 6,   Y = 138
+    // Red goal:  X = 138, Y = 138
+    //
+    // Assumes a 144 inch field and mirror across X = 72.
     // ─────────────────────────────────────────────────────────────────────────
 
-    public static double TELEOP_GOAL_X = 6.0;
+    public static double TELEOP_GOAL_X = 138.0;
     public static double TELEOP_GOAL_Y = 138.0;
 
     // ─────────────────────────────────────────────────────────────────────────
     // Pose reset tuneables
     //
+    // Mirrored from blue reset:
+    // Blue reset: X = 24,  Y = 138, Heading = 145°
+    // Red reset:  X = 120, Y = 138, Heading = 35°
+    //
     // gamepad1.dpad_right:
     // - resets the live robot pose to this pose
-    //
-    // Heading is in degrees for easier dashboard tuning.
     // ─────────────────────────────────────────────────────────────────────────
 
-    public static double TELEOP_RESET_X = 24.0;
+    public static double TELEOP_RESET_X = 120.0;
     public static double TELEOP_RESET_Y = 138.0;
-    public static double TELEOP_RESET_HEADING_DEG = 145.0;
+    public static double TELEOP_RESET_HEADING_DEG = 35.0;
 
     private boolean previousG1DpadUp = false;
     private boolean previousG1DpadRight = false;
@@ -181,7 +184,7 @@ public class BlueTeleOp extends OpMode {
         if (PoseStorage.currentPose != null) {
             follower.setStartingPose(PoseStorage.currentPose);
         } else {
-            follower.setStartingPose(new Pose(24, 138, Math.toRadians(145)));
+            follower.setStartingPose(getTeleOpResetPose());
         }
 
         outtake = new Outtake();
@@ -208,9 +211,12 @@ public class BlueTeleOp extends OpMode {
             turret.setForward();
         }
 
-        telemetry.addLine("Blue TeleOp Initialised");
+        telemetry.addLine("Red TeleOp Initialised");
         telemetry.addData("Goal X", "%.2f", TELEOP_GOAL_X);
         telemetry.addData("Goal Y", "%.2f", TELEOP_GOAL_Y);
+        telemetry.addData("Reset X", "%.2f", TELEOP_RESET_X);
+        telemetry.addData("Reset Y", "%.2f", TELEOP_RESET_Y);
+        telemetry.addData("Reset Heading", "%.1f", TELEOP_RESET_HEADING_DEG);
         telemetry.addData("Turret Mode", autoAimMode ? "AUTO" : "FORWARD");
         telemetry.addData("AIM OFFSET", "%.4f", Turret.AIM_OFFSET);
         telemetry.update();
@@ -249,8 +255,6 @@ public class BlueTeleOp extends OpMode {
     // 3. Update follower
     // 4. Read pose once
     // 5. Use that same pose for velocity, turret, distance, and pose storage
-    //
-    // This keeps turret calculations aligned with the freshest pose.
     // ─────────────────────────────────────────────────────────────────────────
 
     @Override
@@ -318,23 +322,6 @@ public class BlueTeleOp extends OpMode {
 
     // ─────────────────────────────────────────────────────────────────────────
     // Drive controls
-    //
-    // gamepad1.left_stick_y:
-    // - forward/back
-    //
-    // gamepad1.left_stick_x:
-    // - strafe
-    //
-    // gamepad1.right_stick_x:
-    // - turn
-    //
-    // gamepad1.right_bumper:
-    // - intake only, blockers closed
-    // - turn is reduced while collecting
-    //
-    // gamepad1.right_trigger:
-    // - feed mode
-    // - all drive movement is slowed while trigger is held
     // ─────────────────────────────────────────────────────────────────────────
 
     private void driveRobot() {
@@ -365,12 +352,7 @@ public class BlueTeleOp extends OpMode {
     // - force AUTO AIM
     //
     // gamepad1.b:
-    // - removed as requested
-    //
-    // Note:
-    // - This method no longer immediately aims the turret.
-    // - Aiming happens once per loop in updateTurretAim(currentPose).
-    // - This avoids double-aiming and stale pose usage.
+    // - removed
     // ─────────────────────────────────────────────────────────────────────────
 
     private void handleTurretModeControls() {
@@ -408,15 +390,6 @@ public class BlueTeleOp extends OpMode {
 
     // ─────────────────────────────────────────────────────────────────────────
     // Gamepad 2 AIM_OFFSET controls
-    //
-    // gamepad2.dpad_left:
-    // - decrease AIM_OFFSET
-    //
-    // gamepad2.dpad_right:
-    // - increase AIM_OFFSET
-    //
-    // gamepad2.x / square:
-    // - reset AIM_OFFSET to 0
     // ─────────────────────────────────────────────────────────────────────────
 
     private void handleGamepad2TurretOffsetControls() {
@@ -495,11 +468,7 @@ public class BlueTeleOp extends OpMode {
     // Pose reset
     //
     // gamepad1.dpad_right:
-    // - reset live pose near blue goal
-    //
-    // Note:
-    // - This no longer immediately aims the turret.
-    // - The normal loop will aim using the updated pose after follower.update().
+    // - reset live pose near red goal
     // ─────────────────────────────────────────────────────────────────────────
 
     private void handlePoseReset() {
@@ -522,14 +491,6 @@ public class BlueTeleOp extends OpMode {
 
     // ─────────────────────────────────────────────────────────────────────────
     // Intake and feed controls
-    //
-    // gamepad1.right_trigger:
-    // - feed only if shooter is already on
-    // - also activates drive slow mode through driveRobot()
-    //
-    // gamepad1.right_bumper:
-    // - intake collect only
-    // - blockers stay closed
     // ─────────────────────────────────────────────────────────────────────────
 
     private void handleIntakeAndFeedControls() {
@@ -612,10 +573,6 @@ public class BlueTeleOp extends OpMode {
 
     // ─────────────────────────────────────────────────────────────────────────
     // TeleOp target helpers
-    //
-    // TeleOp owns the goal target.
-    // Turret target is updated from this TeleOp target.
-    // Shooter distance also uses this TeleOp target.
     // ─────────────────────────────────────────────────────────────────────────
 
     private Pose getTeleOpGoalPose() {
@@ -665,13 +622,6 @@ public class BlueTeleOp extends OpMode {
 
     // ─────────────────────────────────────────────────────────────────────────
     // HUD Telemetry
-    //
-    // Designed for match use:
-    // - line 1 = driver decision
-    // - line 2 = shooter performance
-    // - line 3 = turret offset tuning
-    //
-    // Uses Locale.US to avoid default-locale decimal formatting bugs.
     // ─────────────────────────────────────────────────────────────────────────
 
     private void updateTelemetry(double distCM) {
@@ -683,7 +633,7 @@ public class BlueTeleOp extends OpMode {
         String feedState = isFeedRequested() ? "FEED" : "IDLE";
 
         telemetry.addLine(
-                "SHOOTER:" + shooterState +
+                "RED | SHOOTER:" + shooterState +
                         " | " + readyState +
                         " | " + turretState +
                         " | " + feedState

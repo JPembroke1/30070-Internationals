@@ -1,7 +1,5 @@
 package org.firstinspires.ftc.teamcode.opModes.subClasses;
 
-import android.os.CpuUsageInfo;
-import android.security.AppUriAuthenticationPolicy;
 
 public class RobotSettings {
 

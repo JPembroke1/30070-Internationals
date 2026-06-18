@@ -5,8 +5,6 @@ import com.pedropathing.geometry.Pose;
 import com.qualcomm.robotcore.hardware.HardwareMap;
 import com.qualcomm.robotcore.hardware.Servo;
 
-import java.util.function.Supplier;
-
 @Configurable
 public class Turret {
 
@@ -19,24 +17,66 @@ public class Turret {
     public static String TURRET_SERVO_NAME = "turret";
 
     // ─────────────────────────────────────────────────────────────────────────
-    // Servo tuning
+    // Mechanical Servo Calibration
+    //
+    // These are the real safe servo limits for your physical turret.
+    //
+    // LEFT_SERVO_LIMIT:
+    // - servo position when turret is safely at -90°
+    //
+    // RIGHT_SERVO_LIMIT:
+    // - servo position when turret is safely at +90°
+    //
+    // Do not assume 0.0 and 1.0 are always safe on the real robot.
+    // Start conservative if the turret can hit the frame.
     // ─────────────────────────────────────────────────────────────────────────
 
-    public static double FORWARD_SERVO = 0.5;
+    public static double LEFT_SERVO_LIMIT = 0.0;
+    public static double RIGHT_SERVO_LIMIT = 1.0;
+
+    // If the turret moves the wrong way, change this to true.
+    public static boolean SERVO_REVERSED = false;
 
     // ─────────────────────────────────────────────────────────────────────────
-    // AIM OFFSET
+    // Aim Tuning
     //
-    // Applies a constant offset AFTER turret math.
+    // AIM_OFFSET:
+    // - final trim added after all turret maths
+    // - adjusted live in TeleOp using gamepad2 dpad left/right
     //
-    // Tuning:
-    // - too far RIGHT → decrease
-    // - too far LEFT → increase
+    // AIM_GAIN:
+    // - scales the robot-relative angle before converting to servo position
     //
-    // Start with ±0.01 adjustments
+    // Recommended:
+    // - leave AIM_GAIN at 1.0 unless the turret consistently under-rotates
+    //   or over-rotates across the whole range.
+    //
+    // If turret under-aims:
+    // - increase AIM_GAIN slightly, for example 1.02
+    //
+    // If turret over-aims:
+    // - decrease AIM_GAIN slightly, for example 0.98
+    //
+    // Confidence:
+    // - AIM_OFFSET is high-confidence for small final shot trim.
+    // - AIM_GAIN should be used carefully because it changes the whole angle map.
     // ─────────────────────────────────────────────────────────────────────────
 
     public static double AIM_OFFSET = 0.0;
+    public static double AIM_GAIN = 1.0;
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Turret Angle Limits
+    //
+    // This locks the maths to a 180° turret:
+    //
+    // -90° = left limit
+    //   0° = forward
+    // +90° = right limit
+    // ─────────────────────────────────────────────────────────────────────────
+
+    private static final double MIN_TURRET_ANGLE = -Math.PI / 2.0;
+    private static final double MAX_TURRET_ANGLE =  Math.PI / 2.0;
 
     // ─────────────────────────────────────────────────────────────────────────
     // Target
@@ -45,69 +85,57 @@ public class Turret {
     public static Pose targetPose = new Pose(0, 0, 0);
 
     // ─────────────────────────────────────────────────────────────────────────
-    // Telemetry values
+    // Velocity Compensation
+    //
+    // velocityCompensationActive:
+    // - true = aim slightly ahead based on robot field velocity
+    // - false = aim directly at target
+    //
+    // VELOCITY_LEAD_GAIN:
+    // - how strongly robot velocity affects turret aim
+    //
+    // Start low.
+    // If shots miss behind while moving, increase slightly.
+    // If shots miss ahead while moving, decrease slightly.
     // ─────────────────────────────────────────────────────────────────────────
-
-    public static double desiredServo = 0.5;
-    public static double currentServo = 0.5;
-
-    public static double servoError = 0.0;
-
-    public static double leadX = 0.0;
-    public static double leadY = 0.0;
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // Velocity compensation
-    // ─────────────────────────────────────────────────────────────────────────
-
-    private Supplier<Double> angularVelocitySupplier;
-
-    private double robotVelocityX = 0.0;
-    private double robotVelocityY = 0.0;
 
     public static boolean velocityCompensationActive = true;
+    public static double VELOCITY_LEAD_GAIN = 0.01;
 
     // ─────────────────────────────────────────────────────────────────────────
     // Init
     // ─────────────────────────────────────────────────────────────────────────
 
-    public void init(HardwareMap hardwareMap, Supplier<Double> angularVelocitySupplier) {
+    public void init(HardwareMap hardwareMap) {
         turretServo = hardwareMap.get(Servo.class, TURRET_SERVO_NAME);
-        this.angularVelocitySupplier = angularVelocitySupplier;
-
         setForward();
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // Target control
+    // Target Control
     // ─────────────────────────────────────────────────────────────────────────
 
     public void setTargetPose(Pose pose) {
-        targetPose = pose;
+        if (pose != null) {
+            targetPose = pose;
+        }
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // Velocity input (field-relative)
-    // ─────────────────────────────────────────────────────────────────────────
-
-    public void setRobotVelocityField(double vx, double vy) {
-        robotVelocityX = vx;
-        robotVelocityY = vy;
-    }
-
-    public void clearRobotVelocity() {
-        robotVelocityX = 0.0;
-        robotVelocityY = 0.0;
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // Aim turret
+    // Aim Turret
     //
-    // Calculates:
-    // - angle to goal
-    // - optional velocity lead
-    // - converts to servo position
-    // - applies AIM_OFFSET
+    // Process:
+    // 1. Calculate field angle from robot to goal
+    // 2. Add simple velocity lead if enabled
+    // 3. Convert field angle to robot-relative angle
+    // 4. Normalise to -π to +π
+    // 5. Apply AIM_GAIN
+    // 6. Clamp to -90° to +90°
+    // 7. Convert angle to 0.0 to 1.0 normalised position
+    // 8. Apply servo reversal if needed
+    // 9. Map to calibrated servo limits
+    // 10. Apply AIM_OFFSET
+    // 11. Clamp to calibrated servo limits
     // ─────────────────────────────────────────────────────────────────────────
 
     public void aimTurret(Pose robotPose, double vx, double vy) {
@@ -119,57 +147,98 @@ public class Turret {
         double dx = targetPose.getX() - robotPose.getX();
         double dy = targetPose.getY() - robotPose.getY();
 
-        // Velocity compensation
-        if (velocityCompensationActive) {
-            leadX = vx * 0.01;
-            leadY = vy * 0.01;
-        } else {
-            leadX = 0.0;
-            leadY = 0.0;
+        double leadX = velocityCompensationActive ? vx * VELOCITY_LEAD_GAIN : 0.0;
+        double leadY = velocityCompensationActive ? vy * VELOCITY_LEAD_GAIN : 0.0;
+
+        double targetAngle = Math.atan2(dy + leadY, dx + leadX);
+
+        double relativeAngle = targetAngle - robotPose.getHeading();
+
+        relativeAngle = normaliseRadians(relativeAngle);
+
+        relativeAngle *= AIM_GAIN;
+
+        relativeAngle = clamp(
+                relativeAngle,
+                MIN_TURRET_ANGLE,
+                MAX_TURRET_ANGLE
+        );
+
+        double normalisedPosition = angleToNormalisedPosition(relativeAngle);
+
+        if (SERVO_REVERSED) {
+            normalisedPosition = 1.0 - normalisedPosition;
         }
 
-        double compensatedX = dx + leadX;
-        double compensatedY = dy + leadY;
+        double servoPosition = mapNormalisedToServoLimits(normalisedPosition);
 
-        double angle = Math.atan2(compensatedY, compensatedX);
+        servoPosition += AIM_OFFSET;
 
-        // Convert angle to servo position
-        double robotHeading = robotPose.getHeading();
-        double relativeAngle = angle - robotHeading;
+        servoPosition = clampToServoLimits(servoPosition);
 
-        // Normalise
-        while (relativeAngle > Math.PI) relativeAngle -= 2 * Math.PI;
-        while (relativeAngle < -Math.PI) relativeAngle += 2 * Math.PI;
-
-        desiredServo = FORWARD_SERVO + (relativeAngle / Math.PI) * 0.5;
-
-        // ─────────────────────────────────────────────────────────
-        // APPLY OFFSET HERE (FINAL STEP)
-        // ─────────────────────────────────────────────────────────
-
-        double commanded = desiredServo + AIM_OFFSET;
-
-        commanded = clamp(commanded, 0.0, 1.0);
-
-        turretServo.setPosition(commanded);
-
-        currentServo = commanded;
-        servoError = desiredServo - currentServo;
+        turretServo.setPosition(servoPosition);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // Forward position
+    // Forward Position
+    //
+    // Forward is the centre between the calibrated servo limits.
+    // This should point the turret straight ahead if the horn/linkage is centred.
     // ─────────────────────────────────────────────────────────────────────────
 
     public void setForward() {
-        if (turretServo != null) {
-            turretServo.setPosition(FORWARD_SERVO);
-            currentServo = FORWARD_SERVO;
+        if (turretServo == null) {
+            return;
         }
+
+        turretServo.setPosition(getCalibratedCentrePosition());
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // Utility
+    // Calibration Helpers
+    // ─────────────────────────────────────────────────────────────────────────
+
+    public static double getCalibratedCentrePosition() {
+        return (LEFT_SERVO_LIMIT + RIGHT_SERVO_LIMIT) / 2.0;
+    }
+
+    private double angleToNormalisedPosition(double angleRadians) {
+        return (angleRadians - MIN_TURRET_ANGLE) /
+                (MAX_TURRET_ANGLE - MIN_TURRET_ANGLE);
+    }
+
+    private double mapNormalisedToServoLimits(double normalisedPosition) {
+        double minServo = Math.min(LEFT_SERVO_LIMIT, RIGHT_SERVO_LIMIT);
+        double maxServo = Math.max(LEFT_SERVO_LIMIT, RIGHT_SERVO_LIMIT);
+
+        return minServo + normalisedPosition * (maxServo - minServo);
+    }
+
+    private double clampToServoLimits(double value) {
+        double minServo = Math.min(LEFT_SERVO_LIMIT, RIGHT_SERVO_LIMIT);
+        double maxServo = Math.max(LEFT_SERVO_LIMIT, RIGHT_SERVO_LIMIT);
+
+        return clamp(value, minServo, maxServo);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Angle Utility
+    // ─────────────────────────────────────────────────────────────────────────
+
+    private double normaliseRadians(double angleRadians) {
+        while (angleRadians > Math.PI) {
+            angleRadians -= 2.0 * Math.PI;
+        }
+
+        while (angleRadians < -Math.PI) {
+            angleRadians += 2.0 * Math.PI;
+        }
+
+        return angleRadians;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // General Utility
     // ─────────────────────────────────────────────────────────────────────────
 
     private double clamp(double value, double min, double max) {

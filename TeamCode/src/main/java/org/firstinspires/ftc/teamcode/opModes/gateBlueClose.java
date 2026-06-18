@@ -26,8 +26,8 @@ import static com.pedropathing.ivy.groups.Groups.sequential;
 import static com.pedropathing.ivy.pedro.PedroCommands.follow;
 
 @Configurable
-@Autonomous(name = "Blue Side Close Comp", group = "Blue")
-public class newBlueSideClose extends OpMode {
+@Autonomous(name = "Gate Blue", group = "Blue")
+public class gateBlueClose extends OpMode {
 
     // ─────────────────────────────────────────────────────────────────────────
     // Subsystems
@@ -55,8 +55,8 @@ public class newBlueSideClose extends OpMode {
     // Intake powers
     // ─────────────────────────────────────────────────────────────────────────
 
-    public static double SHOOT_INTAKE_LEFT_POWER = 0.5;
-    public static double SHOOT_INTAKE_RIGHT_POWER = 0.5;
+    public static double SHOOT_INTAKE_LEFT_POWER = 1.0;
+    public static double SHOOT_INTAKE_RIGHT_POWER = 1.0;
 
     public static double COLLECT_INTAKE_LEFT_POWER = 1.0;
     public static double COLLECT_INTAKE_RIGHT_POWER = 1.0;
@@ -65,34 +65,25 @@ public class newBlueSideClose extends OpMode {
     // Path timeouts
     // ─────────────────────────────────────────────────────────────────────────
 
-    public static double TIMEOUT_PATH_1 = 3.0;
+    public static double TIMEOUT_PATH_1 = 2.0;
     public static double TIMEOUT_PATH_2 = 3.0;
     public static double TIMEOUT_PATH_3 = 3.0;
     public static double TIMEOUT_PATH_4 = 3.0;
     public static double TIMEOUT_PATH_5 = 2.0;
-    public static double TIMEOUT_PATH_6 = 3.0;
-    public static double TIMEOUT_PATH_7 = 3.0;
-    public static double TIMEOUT_PATH_8 = 3.0;
-    public static double TIMEOUT_PATH_9 = 3.0;
+    public static double TIMEOUT_PATH_6 = 2.0;
+    public static double TIMEOUT_PATH_7 = 2.0;
+    public static double TIMEOUT_PATH_8 = 2.0;
+    public static double TIMEOUT_PATH_9 = 2.0;
+    public static double TIMEOUT_PATH_10 = 3.0;
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // Shooter readiness
-    //
-    // If shooter does not reach speed before timeout, auto feeds anyway.
-    // ─────────────────────────────────────────────────────────────────────────
 
-    public static double TPS_SPINUP_TIMEOUT = 2.0;
+    public static double TPS_SPINUP_TIMEOUT = 1.0;
     public static double TPS_READY_THRESHOLD = 0.95;
 
     private double tpsWaitStartTime = 0.0;
     private boolean tpsTimeoutFired = false;
     private boolean outtakeEnabled = true;
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // Velocity estimation
-    //
-    // Uses pose delta because this Pedro version does not return X/Y velocity.
-    // ─────────────────────────────────────────────────────────────────────────
 
     public static boolean USE_POSE_DELTA_VELOCITY = true;
     public static double VELOCITY_SMOOTHING_ALPHA = 0.35;
@@ -108,13 +99,14 @@ public class newBlueSideClose extends OpMode {
 
     private double velocityDt = 0.0;
 
+
     private double currentDistanceCM = 0.0;
 
     // ─────────────────────────────────────────────────────────────────────────
     // Field poses
     // ─────────────────────────────────────────────────────────────────────────
 
-    private final Pose startPose = new Pose(22, 124, Math.toRadians(145));
+    private final Pose startPose = new Pose(21, 123, Math.toRadians(145));
     private final Pose shootPose = new Pose(60, 86, Math.toRadians(180));
 
     private final Pose stack1Pose = new Pose(13, 86, Math.toRadians(180));
@@ -123,20 +115,21 @@ public class newBlueSideClose extends OpMode {
     private final Pose eatStack2Pose = new Pose(15, 60, Math.toRadians(180));
 
     private final Pose overflowPose = new Pose(15, 58, Math.toRadians(145));
-    private final Pose endPose = new Pose(50, 70, Math.toRadians(180));
+    private final Pose endPose = new Pose(59, 101, Math.toRadians(145));
 
     // ─────────────────────────────────────────────────────────────────────────
     // Path chains
     // ─────────────────────────────────────────────────────────────────────────
 
     private PathChain pathToShoot;
-    private PathChain pathToStack1;
-    private PathChain pathReturnFromStack1;
     private PathChain pathToStack2;
-    private PathChain pathToEatStack2;
-    private PathChain pathReturnFromStack2;
-    private PathChain pathToOverflow;
-    private PathChain pathReturnFromOverflow;
+    private PathChain pathToCollectStack2;
+    private PathChain pathToShoot2;
+    private PathChain pathToGate;
+    private PathChain pathToShoot3;
+    private PathChain pathToGate2;
+    private PathChain pathToShoot4;
+    private PathChain pathToStack1;
     private PathChain pathToEnd;
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -172,7 +165,7 @@ public class newBlueSideClose extends OpMode {
 
         currentDistanceCM = distanceToGoalCM(startPose);
 
-        telemetry.addLine("Blue Side Close Comp Initialised");
+        telemetry.addLine("Gate Blue Initialised");
         telemetry.update();
     }
 
@@ -187,26 +180,6 @@ public class newBlueSideClose extends OpMode {
 
         updateShooterRegressionAndPIDF(currentPose);
 
-        telemetry.addLine("Blue Side Close Comp Init Loop");
-
-        telemetry.addLine("Goal / Distance");
-        telemetry.addData("Goal X", "%.2f", GOAL_X);
-        telemetry.addData("Goal Y", "%.2f", GOAL_Y);
-        telemetry.addData("Distance CM", "%.1f", currentDistanceCM);
-
-        telemetry.addLine("Shooter");
-        telemetry.addData("Target TPS", "%.0f", Outtake.target);
-        telemetry.addData("Current TPS", "%.0f", Outtake.currentTPS);
-
-        telemetry.addLine("Hood");
-        telemetry.addData("Hood Command", "%.3f", RobotHardware.lastCommandedHood);
-
-        telemetry.addLine("Turret");
-        telemetry.addData("Aim Offset", "%.4f", Turret.AIM_OFFSET);
-        telemetry.addData("Aim Gain", "%.3f", Turret.AIM_GAIN);
-        telemetry.addData("Velocity Lead Gain", "%.4f", Turret.VELOCITY_LEAD_GAIN);
-
-        telemetry.update();
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -237,43 +210,39 @@ public class newBlueSideClose extends OpMode {
                 infinite(this::robotPeriodic),
 
                 sequential(
-                        // Path 1: drive to shooting position. Intake OFF.
                         followWithTimeout(pathToShoot, TIMEOUT_PATH_1),
 
                         shootCycle(),
 
-                        // Path 2: drive to Stack 1 with intake ON and blocker CLOSED.
-                        followCollectWithTimeout(pathToStack1, TIMEOUT_PATH_2),
+                        followWithTimeout(pathToStack2, TIMEOUT_PATH_2),
 
-                        // Path 3: return to shooting position. Intake OFF.
-                        followWithTimeout(pathReturnFromStack1, TIMEOUT_PATH_3),
+                        followCollectWithTimeout(pathToCollectStack2, TIMEOUT_PATH_3),
 
-                        shootCycle(),
-
-                        // Path 4: drive to Stack 2 area.
-                        followWithTimeout(pathToStack2, TIMEOUT_PATH_4),
-
-                        // Path 5: collect Stack 2.
-                        followCollectWithTimeout(pathToEatStack2, TIMEOUT_PATH_5),
-
-                        // Path 6: return to shooting position.
-                        followWithTimeout(pathReturnFromStack2, TIMEOUT_PATH_6),
+                        followWithTimeout(pathToShoot2, TIMEOUT_PATH_4),
 
                         shootCycle(),
 
-                        // Path 7: drive to overflow gate.
-                        followWithTimeout(pathToOverflow, TIMEOUT_PATH_7),
+                        followWithTimeout(pathToGate, TIMEOUT_PATH_5),
 
-                        // Wait at overflow gate while collecting.
                         gateCollectWait(),
 
-                        // Path 8: return to shooting position.
-                        followWithTimeout(pathReturnFromOverflow, TIMEOUT_PATH_8),
+                        followWithTimeout(pathToShoot3, TIMEOUT_PATH_6),
 
                         shootCycle(),
 
-                        // Path 9: move to end position.
-                        followWithTimeout(pathToEnd, TIMEOUT_PATH_9),
+                        followWithTimeout(pathToGate2, TIMEOUT_PATH_7),
+
+                        gateCollectWait(),
+
+                        followWithTimeout(pathToShoot4, TIMEOUT_PATH_8),
+
+                        shootCycle(),
+
+                        followCollectWithTimeout(pathToStack1, TIMEOUT_PATH_9),
+
+                        followWithTimeout(pathToEnd, TIMEOUT_PATH_10),
+
+                        shootCycle(),
 
                         instant(this::finishAuto)
                 )
@@ -286,29 +255,23 @@ public class newBlueSideClose extends OpMode {
     // Scheduler.execute() runs:
     // - robotPeriodic()
     // - active path commands
-    // - active shooter/intake commands
+    // - active intake/shooter commands
     //
     // Telemetry only reads stored values.
+    // It does not call follower.getPose().
     // ─────────────────────────────────────────────────────────────────────────
 
     @Override
     public void loop() {
         Scheduler.execute();
 
-        telemetry.addLine("Blue Side Close Comp");
+        telemetry.addLine("Gate Blue Auto");
 
-        telemetry.addLine("Auto State");
+        telemetry.addLine("State");
         telemetry.addData("Outtake Enabled", outtakeEnabled);
         telemetry.addData("TPS Timeout Fired", tpsTimeoutFired);
         telemetry.addData("At Speed", outtake.isAtSpeed(TPS_READY_THRESHOLD));
         telemetry.addData("Distance CM", "%.1f", currentDistanceCM);
-
-        telemetry.addLine("Velocity");
-        telemetry.addData("Raw X", "%.2f", rawVelocityX);
-        telemetry.addData("Raw Y", "%.2f", rawVelocityY);
-        telemetry.addData("Estimated X", "%.2f", estimatedVelocityX);
-        telemetry.addData("Estimated Y", "%.2f", estimatedVelocityY);
-        telemetry.addData("dt", "%.3f", velocityDt);
 
         telemetry.addLine("Shooter");
         telemetry.addData("Target TPS", "%.0f", Outtake.target);
@@ -316,6 +279,13 @@ public class newBlueSideClose extends OpMode {
         telemetry.addData("Effective TPS", "%.0f", Outtake.effectiveTPS);
         telemetry.addData("Output", "%.3f", Outtake.lastOutput);
         telemetry.addData("Error", "%.0f", Outtake.lastError);
+
+        telemetry.addLine("Velocity");
+        telemetry.addData("Raw X", "%.2f", rawVelocityX);
+        telemetry.addData("Raw Y", "%.2f", rawVelocityY);
+        telemetry.addData("Estimated X", "%.2f", estimatedVelocityX);
+        telemetry.addData("Estimated Y", "%.2f", estimatedVelocityY);
+        telemetry.addData("dt", "%.3f", velocityDt);
 
         telemetry.addLine("Turret");
         telemetry.addData("Velocity Comp", Turret.velocityCompensationActive);
@@ -357,44 +327,49 @@ public class newBlueSideClose extends OpMode {
                 .setLinearHeadingInterpolation(startPose.getHeading(), shootPose.getHeading())
                 .build();
 
-        pathToStack1 = follower.pathBuilder()
-                .addPath(new BezierLine(shootPose, stack1Pose))
-                .setLinearHeadingInterpolation(shootPose.getHeading(), stack1Pose.getHeading())
-                .build();
-
-        pathReturnFromStack1 = follower.pathBuilder()
-                .addPath(new BezierLine(stack1Pose, shootPose))
-                .setLinearHeadingInterpolation(stack1Pose.getHeading(), shootPose.getHeading())
-                .build();
-
         pathToStack2 = follower.pathBuilder()
                 .addPath(new BezierLine(shootPose, stack2Pose))
                 .setLinearHeadingInterpolation(shootPose.getHeading(), stack2Pose.getHeading())
                 .build();
 
-        pathToEatStack2 = follower.pathBuilder()
+        pathToCollectStack2 = follower.pathBuilder()
                 .addPath(new BezierLine(stack2Pose, eatStack2Pose))
                 .setLinearHeadingInterpolation(stack2Pose.getHeading(), eatStack2Pose.getHeading())
                 .build();
 
-        pathReturnFromStack2 = follower.pathBuilder()
+        pathToShoot2 = follower.pathBuilder()
                 .addPath(new BezierLine(eatStack2Pose, shootPose))
                 .setLinearHeadingInterpolation(eatStack2Pose.getHeading(), shootPose.getHeading())
                 .build();
 
-        pathToOverflow = follower.pathBuilder()
+        pathToGate = follower.pathBuilder()
                 .addPath(new BezierLine(shootPose, overflowPose))
                 .setLinearHeadingInterpolation(shootPose.getHeading(), overflowPose.getHeading())
                 .build();
 
-        pathReturnFromOverflow = follower.pathBuilder()
+        pathToShoot3 = follower.pathBuilder()
                 .addPath(new BezierLine(overflowPose, shootPose))
                 .setLinearHeadingInterpolation(overflowPose.getHeading(), shootPose.getHeading())
                 .build();
 
+        pathToGate2 = follower.pathBuilder()
+                .addPath(new BezierLine(shootPose, overflowPose))
+                .setLinearHeadingInterpolation(shootPose.getHeading(), overflowPose.getHeading())
+                .build();
+
+        pathToShoot4 = follower.pathBuilder()
+                .addPath(new BezierLine(overflowPose, shootPose))
+                .setLinearHeadingInterpolation(overflowPose.getHeading(), shootPose.getHeading())
+                .build();
+
+        pathToStack1 = follower.pathBuilder()
+                .addPath(new BezierLine(shootPose, stack1Pose))
+                .setLinearHeadingInterpolation(shootPose.getHeading(), stack1Pose.getHeading())
+                .build();
+
         pathToEnd = follower.pathBuilder()
-                .addPath(new BezierLine(shootPose, endPose))
-                .setLinearHeadingInterpolation(shootPose.getHeading(), endPose.getHeading())
+                .addPath(new BezierLine(stack1Pose, endPose))
+                .setLinearHeadingInterpolation(stack1Pose.getHeading(), endPose.getHeading())
                 .build();
     }
 
@@ -403,7 +378,7 @@ public class newBlueSideClose extends OpMode {
     // ─────────────────────────────────────────────────────────────────────────
 
     private Command waitSeconds(double seconds) {
-        return waitMs(seconds * 1000.0);
+        return waitMs(Math.round(seconds * 1000.0));
     }
 
     private Command followWithTimeout(PathChain path, double timeoutSeconds) {
@@ -423,7 +398,9 @@ public class newBlueSideClose extends OpMode {
     private Command gateCollectWait() {
         return sequential(
                 instant(() -> {
-                    updateShooterRegressionAndPIDF(PoseStorage.currentPose);
+                    Pose currentPose = PoseStorage.currentPose;
+                    updateShooterRegressionAndPIDF(currentPose);
+
                     robotHardware.block();
                     intake.intake(COLLECT_INTAKE_LEFT_POWER, COLLECT_INTAKE_RIGHT_POWER);
                 }),
@@ -431,7 +408,9 @@ public class newBlueSideClose extends OpMode {
                 waitSeconds(GATE_COLLECT_SECONDS),
 
                 instant(() -> {
-                    updateShooterRegressionAndPIDF(PoseStorage.currentPose);
+                    Pose currentPose = PoseStorage.currentPose;
+                    updateShooterRegressionAndPIDF(currentPose);
+
                     intake.intakeStop();
                     robotHardware.block();
                 })
@@ -444,7 +423,9 @@ public class newBlueSideClose extends OpMode {
                     startTpsWait();
 
                     outtakeEnabled = true;
-                    updateShooterRegressionAndPIDF(PoseStorage.currentPose);
+
+                    Pose currentPose = PoseStorage.currentPose;
+                    updateShooterRegressionAndPIDF(currentPose);
 
                     stopIntakeAndBlock();
                 }),
@@ -471,7 +452,9 @@ public class newBlueSideClose extends OpMode {
     // ─────────────────────────────────────────────────────────────────────────
     // Continuous robot update
     //
-    // Timing-critical order:
+    // This is the main timing-critical update.
+    //
+    // Order:
     // 1. follower.update()
     // 2. read currentPose once
     // 3. update pose storage
@@ -553,7 +536,9 @@ public class newBlueSideClose extends OpMode {
     }
 
     private boolean shooterReadyOrTimedOut() {
-        updateShooterRegressionAndPIDF(PoseStorage.currentPose);
+        Pose currentPose = PoseStorage.currentPose;
+
+        updateShooterRegressionAndPIDF(currentPose);
 
         if (isShooterAtSpeed()) {
             return true;
@@ -585,21 +570,27 @@ public class newBlueSideClose extends OpMode {
     }
 
     private void holdShooterAndBlock() {
-        updateShooterRegressionAndPIDF(PoseStorage.currentPose);
+        Pose currentPose = PoseStorage.currentPose;
+
+        updateShooterRegressionAndPIDF(currentPose);
 
         intake.intakeStop();
         robotHardware.block();
     }
 
     private void runShootFeed() {
-        updateShooterRegressionAndPIDF(PoseStorage.currentPose);
+        Pose currentPose = PoseStorage.currentPose;
+
+        updateShooterRegressionAndPIDF(currentPose);
 
         robotHardware.release();
         intake.intake(SHOOT_INTAKE_LEFT_POWER, SHOOT_INTAKE_RIGHT_POWER);
     }
 
     private void runGateCollect() {
-        updateShooterRegressionAndPIDF(PoseStorage.currentPose);
+        Pose currentPose = PoseStorage.currentPose;
+
+        updateShooterRegressionAndPIDF(currentPose);
 
         robotHardware.block();
         intake.intake(COLLECT_INTAKE_LEFT_POWER, COLLECT_INTAKE_RIGHT_POWER);
@@ -631,6 +622,7 @@ public class newBlueSideClose extends OpMode {
             estimatedVelocityY = 0.0;
 
             velocityDt = 0.0;
+
             return;
         }
 
@@ -650,7 +642,7 @@ public class newBlueSideClose extends OpMode {
         rawVelocityX = (currentPose.getX() - previousVelocityPose.getX()) / velocityDt;
         rawVelocityY = (currentPose.getY() - previousVelocityPose.getY()) / velocityDt;
 
-        double alpha = clamp(VELOCITY_SMOOTHING_ALPHA);
+        double alpha = clamp01(VELOCITY_SMOOTHING_ALPHA);
 
         estimatedVelocityX =
                 (alpha * rawVelocityX) +
@@ -697,7 +689,7 @@ public class newBlueSideClose extends OpMode {
     // Utility
     // ─────────────────────────────────────────────────────────────────────────
 
-    private double clamp(double value) {
+    private double clamp01(double value) {
         return Math.max(0.0, Math.min(1.0, value));
     }
 }

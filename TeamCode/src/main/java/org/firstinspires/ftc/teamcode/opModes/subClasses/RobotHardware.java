@@ -7,8 +7,8 @@ import com.qualcomm.robotcore.hardware.Servo;
 @Configurable
 public class RobotHardware {
 
-    public Servo hoodServo = null;
-    public Servo blockServo = null;
+    public Servo hoodServo;
+    public Servo blockServo;
 
     public static double hoodSlope = -0.00365;
     public static double hoodIntercept = 0.8;
@@ -42,18 +42,6 @@ public class RobotHardware {
         blockServo.setDirection(Servo.Direction.REVERSE);
 
         reset_all();
-    }
-
-    public void close_range() {
-        setHoodPosition(RobotSettings.close);
-    }
-
-    public void mid_range() {
-        setHoodPosition(RobotSettings.mid);
-    }
-
-    public void long_range() {
-        setHoodPosition(RobotSettings.far);
     }
 
     public void setHoodPosition(double targetPosition) {
