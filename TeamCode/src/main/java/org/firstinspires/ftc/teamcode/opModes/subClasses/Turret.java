@@ -4,6 +4,10 @@ import com.bylazar.configurables.annotations.Configurable;
 import com.pedropathing.geometry.Pose;
 import com.qualcomm.robotcore.hardware.HardwareMap;
 import com.qualcomm.robotcore.hardware.Servo;
+import com.pedropathing.follower.Follower;
+import com.pedropathing.follower.FollowerConstants;
+
+import java.util.function.DoubleSupplier;
 
 @Configurable
 public class Turret {
@@ -63,12 +67,17 @@ public class Turret {
     public static double appliedCorrection = 0;
     public static double dynamicMaxStep = 0;
 
+    private DoubleSupplier angularVelocity;
+
+    public static double angularVelocityCorrection = 0.2;
+
     // ─────────────────────────────────────────────────────────────────────────
     // Init
     // ─────────────────────────────────────────────────────────────────────────
 
-    public void init(HardwareMap hardwareMap) {
+    public void init(HardwareMap hardwareMap, DoubleSupplier angularVelocity) {
         rotationalTurretServo = hardwareMap.get(Servo.class, "rotationalTurretServo");
+        this.angularVelocity = angularVelocity;
         centre();
     }
 
@@ -130,7 +139,7 @@ public class Turret {
         dx = targetPose.getX() - robotX;
         dy = targetPose.getY() - robotY;
 
-        double targetWorldAngleRad = Math.atan2(dy, dx);
+        double targetWorldAngleRad = Math.atan2(dy, dx) + angularVelocity.getAsDouble() * angularVelocityCorrection;
         targetWorldAngle = Math.toDegrees(targetWorldAngleRad);
 
         double relativeAngleRad = angleWrap(targetWorldAngleRad - robotHeading);

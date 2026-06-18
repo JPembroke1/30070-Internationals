@@ -23,49 +23,72 @@ public class BlueTeleOp extends OpMode {
     private RobotHardware robotHardware;
 
     // ─────────────────────────────────────────────────────────────────────────
-    // Blue goal targeting
+    // TeleOp goal tuneables
+    //
+    // These are the main target values for this TeleOp.
+    // The turret target and shooter distance both use these values.
+    //
+    // If the turret is aiming left/right of the goal, tune TELEOP_GOAL_X.
+    // If the distance/hood feels wrong, tune TELEOP_GOAL_Y or hood regression.
     // ─────────────────────────────────────────────────────────────────────────
 
-    public static double BLUE_GOAL_X = 6;
-    public static double BLUE_GOAL_Y = 138;
+    public static double TELEOP_GOAL_X = 6.0;
+    public static double TELEOP_GOAL_Y = 138.0;
 
-    public static double BLUE_GOAL_RESET_X = 24;
-    public static double BLUE_GOAL_RESET_Y = 144;
-    public static double BLUE_GOAL_RESET_HEADING_DEG = 177;
+    // ─────────────────────────────────────────────────────────────────────────
+    // Pose reset tuneables
+    //
+    // gamepad1.dpad_right resets the live robot pose to this pose.
+    //
+    // These values should represent the robot being in front of the blue goal.
+    // Heading is in degrees for easier tuning.
+    // ─────────────────────────────────────────────────────────────────────────
+
+    public static double TELEOP_RESET_X = 24.0;
+    public static double TELEOP_RESET_Y = 138.0;
+    public static double TELEOP_RESET_HEADING_DEG = 177.0;
 
     private boolean previousG1DpadUp = false;
     private boolean previousG1DpadRight = false;
 
     // ─────────────────────────────────────────────────────────────────────────
-    // Turret tuning
+    // Turret tuneables
     //
     // FORWARD_TURRET_SERVO:
     // - Used when turret is in straight-ahead mode.
-    // - 0.5 should be centre/forward if the servo horn is calibrated correctly.
+    // - 0.5 is centre based on your Turret class.
+    //
+    // START_IN_AUTO_AIM:
+    // - true = TeleOp starts with turret tracking goal.
+    // - false = TeleOp starts with turret facing forward.
     // ─────────────────────────────────────────────────────────────────────────
 
     public static double FORWARD_TURRET_SERVO = 0.5;
+    public static boolean START_IN_AUTO_AIM = true;
 
     private boolean autoAimMode = true;
     private boolean previousLeftBumper = false;
 
     // ─────────────────────────────────────────────────────────────────────────
-    // Drive tuning
+    // Drive tuneables
     // ─────────────────────────────────────────────────────────────────────────
 
     public static double DRIVE_SPEED = 1.0;
     public static double INTAKE_TURN_MULTIPLIER = 0.45;
 
     // ─────────────────────────────────────────────────────────────────────────
-    // Shooter tuning
+    // Shooter tuneables
     //
     // USE_STATIC_TARGET_TPS:
     // - true = use STATIC_TARGET_TPS.
-    // - false = use distance regression from Outtake.java.
+    // - false = use Outtake linear regression.
+    //
+    // For match use, this will usually be false.
+    // For kV/kS/kP tuning, this can be true.
     // ─────────────────────────────────────────────────────────────────────────
 
     public static boolean USE_STATIC_TARGET_TPS = false;
-    public static double STATIC_TARGET_TPS = 1600;
+    public static double STATIC_TARGET_TPS = 1500.0;
 
     private boolean shooterEnabled = false;
 
@@ -73,7 +96,7 @@ public class BlueTeleOp extends OpMode {
     private boolean previousTriangle = false;
 
     // ─────────────────────────────────────────────────────────────────────────
-    // Intake / feed tuning
+    // Intake / feed tuneables
     // ─────────────────────────────────────────────────────────────────────────
 
     public static double SHOOT_TRIGGER_THRESHOLD = 0.2;
@@ -84,6 +107,16 @@ public class BlueTeleOp extends OpMode {
     public static double COLLECT_INTAKE_LEFT_POWER = 1.0;
     public static double COLLECT_INTAKE_RIGHT_POWER = 1.0;
 
+    // ─────────────────────────────────────────────────────────────────────────
+    // Telemetry tuneables
+    // ─────────────────────────────────────────────────────────────────────────
+
+    public static boolean SHOW_FULL_TELEMETRY = true;
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Init
+    // ─────────────────────────────────────────────────────────────────────────
+
     @Override
     public void init() {
         follower = Constants.createFollower(hardwareMap);
@@ -91,7 +124,7 @@ public class BlueTeleOp extends OpMode {
         if (PoseStorage.currentPose != null) {
             follower.setStartingPose(PoseStorage.currentPose);
         } else {
-            follower.setStartingPose(new Pose(60, 80, Math.toRadians(177)));
+            follower.setStartingPose(new Pose(24, 138, Math.toRadians(177)));
         }
 
         outtake = new Outtake();
@@ -101,21 +134,24 @@ public class BlueTeleOp extends OpMode {
 
         outtake.init(hardwareMap);
         intake.init(hardwareMap);
-        turret.init(hardwareMap);
-
-        updateGoalTarget();
+        turret.init(hardwareMap, follower::getAngularVelocity);
 
         shooterEnabled = false;
-        autoAimMode = true;
+        autoAimMode = START_IN_AUTO_AIM;
+
+        updateTurretTargetFromTeleOpGoal();
 
         robotHardware.reset_all();
         intake.intakeStop();
         outtake.stopOuttake();
-        turret.setServoDirect(FORWARD_TURRET_SERVO);
+
+        if (!autoAimMode) {
+            turret.setServoDirect(FORWARD_TURRET_SERVO);
+        }
 
         telemetry.addLine("Blue TeleOp initialised");
-        telemetry.addData("Goal X", "%.2f", getGoalPose().getX());
-        telemetry.addData("Goal Y", "%.2f", getGoalPose().getY());
+        telemetry.addData("TeleOp Goal X", "%.2f", TELEOP_GOAL_X);
+        telemetry.addData("TeleOp Goal Y", "%.2f", TELEOP_GOAL_Y);
         telemetry.addData("Turret Mode", autoAimMode ? "AUTO AIM" : "FORWARD");
         telemetry.addData("Forward Servo", "%.3f", FORWARD_TURRET_SERVO);
         telemetry.addData("Static TPS Mode", USE_STATIC_TARGET_TPS);
@@ -123,20 +159,31 @@ public class BlueTeleOp extends OpMode {
         telemetry.update();
     }
 
+    // ─────────────────────────────────────────────────────────────────────────
+    // Start
+    // ─────────────────────────────────────────────────────────────────────────
+
     @Override
     public void start() {
         follower.startTeleopDrive();
 
-        updateGoalTarget();
-
         shooterEnabled = false;
-        autoAimMode = true;
+        autoAimMode = START_IN_AUTO_AIM;
+
+        updateTurretTargetFromTeleOpGoal();
 
         robotHardware.reset_all();
         intake.intakeStop();
         outtake.stopOuttake();
-        turret.setServoDirect(FORWARD_TURRET_SERVO);
+
+        if (!autoAimMode) {
+            turret.setServoDirect(FORWARD_TURRET_SERVO);
+        }
     }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Main loop
+    // ─────────────────────────────────────────────────────────────────────────
 
     @Override
     public void loop() {
@@ -144,7 +191,7 @@ public class BlueTeleOp extends OpMode {
         handleTurretModeControls();
         handleShooterControls();
 
-        updateGoalTarget();
+        updateTurretTargetFromTeleOpGoal();
 
         driveRobot();
 
@@ -155,7 +202,7 @@ public class BlueTeleOp extends OpMode {
 
         intake.update();
 
-        double distCM = distanceToGoalCM();
+        double distCM = distanceToTeleOpGoalCM();
 
         updateTurretAim(currentPose);
 
@@ -178,6 +225,10 @@ public class BlueTeleOp extends OpMode {
         updateTelemetry(currentPose, distCM);
     }
 
+    // ─────────────────────────────────────────────────────────────────────────
+    // Stop
+    // ─────────────────────────────────────────────────────────────────────────
+
     @Override
     public void stop() {
         PoseStorage.currentPose = follower.getPose();
@@ -190,11 +241,18 @@ public class BlueTeleOp extends OpMode {
 
         intake.intakeStop();
         robotHardware.reset_all();
+
         turret.setServoDirect(FORWARD_TURRET_SERVO);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // Drive
+    // Drive controls
+    //
+    // gamepad1.left_stick_y = forward/back
+    // gamepad1.left_stick_x = strafe
+    // gamepad1.right_stick_x = turn
+    //
+    // gamepad1.right_bumper = intake only, blockers closed
     // ─────────────────────────────────────────────────────────────────────────
 
     private void driveRobot() {
@@ -213,13 +271,13 @@ public class BlueTeleOp extends OpMode {
     // Turret controls
     //
     // gamepad1.left_bumper:
-    // - Toggle between auto aim and forward.
+    // - Toggle between AUTO AIM and FORWARD.
     //
     // gamepad1.dpad_up:
-    // - Force auto aim.
+    // - Force AUTO AIM.
     //
     // gamepad1.b:
-    // - Force turret forward.
+    // - Force FORWARD.
     // ─────────────────────────────────────────────────────────────────────────
 
     private void handleTurretModeControls() {
@@ -228,11 +286,15 @@ public class BlueTeleOp extends OpMode {
 
         if (currentLeftBumper && !previousLeftBumper) {
             autoAimMode = !autoAimMode;
+
+            if (!autoAimMode) {
+                turret.setServoDirect(FORWARD_TURRET_SERVO);
+            }
         }
 
         if (currentDpadUp && !previousG1DpadUp) {
             autoAimMode = true;
-            updateGoalTarget();
+            updateTurretTargetFromTeleOpGoal();
             turret.aimTurret(follower.getPose());
         }
 
@@ -294,27 +356,22 @@ public class BlueTeleOp extends OpMode {
     // gamepad1.dpad_right:
     // - Reset live pose near blue goal.
     //
-    // Truth note:
-    // - I am about 85% sure follower.setPose(...) is correct.
-    // - If your Pedro version errors, this is the line to replace.
+    // If follower.setPose(...) errors, your Pedro version uses a different
+    // pose reset method.
     // ─────────────────────────────────────────────────────────────────────────
 
     private void handlePoseReset() {
         boolean currentDpadRight = gamepad1.dpad_right;
 
         if (currentDpadRight && !previousG1DpadRight) {
-            Pose blueGoalResetPose = new Pose(
-                    BLUE_GOAL_RESET_X,
-                    BLUE_GOAL_RESET_Y,
-                    Math.toRadians(BLUE_GOAL_RESET_HEADING_DEG)
-            );
+            Pose resetPose = getTeleOpResetPose();
 
-            follower.setPose(blueGoalResetPose);
-            PoseStorage.currentPose = blueGoalResetPose;
+            follower.setPose(resetPose);
+            PoseStorage.currentPose = resetPose;
 
             autoAimMode = true;
-            updateGoalTarget();
-            turret.aimTurret(blueGoalResetPose);
+            updateTurretTargetFromTeleOpGoal();
+            turret.aimTurret(resetPose);
         }
 
         previousG1DpadRight = currentDpadRight;
@@ -357,24 +414,37 @@ public class BlueTeleOp extends OpMode {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // Goal helpers
+    // TeleOp target helpers
+    //
+    // This is the important part:
+    // - TeleOp owns the goal target.
+    // - Turret target is updated from this TeleOp target.
+    // - Distance calculation also uses this TeleOp target.
     // ─────────────────────────────────────────────────────────────────────────
 
-    private Pose getGoalPose() {
+    private Pose getTeleOpGoalPose() {
         return new Pose(
-                BLUE_GOAL_X,
-                BLUE_GOAL_Y,
+                TELEOP_GOAL_X,
+                TELEOP_GOAL_Y,
                 0
         );
     }
 
-    private void updateGoalTarget() {
-        turret.setPose(getGoalPose());
+    private Pose getTeleOpResetPose() {
+        return new Pose(
+                TELEOP_RESET_X,
+                TELEOP_RESET_Y,
+                Math.toRadians(TELEOP_RESET_HEADING_DEG)
+        );
     }
 
-    private double distanceToGoalCM() {
+    private void updateTurretTargetFromTeleOpGoal() {
+        turret.setTargetPose(getTeleOpGoalPose());
+    }
+
+    private double distanceToTeleOpGoalCM() {
         Pose robotPose = follower.getPose();
-        Pose goalPose = getGoalPose();
+        Pose goalPose = getTeleOpGoalPose();
 
         double dx = goalPose.getX() - robotPose.getX();
         double dy = goalPose.getY() - robotPose.getY();
@@ -405,25 +475,22 @@ public class BlueTeleOp extends OpMode {
         telemetry.addData("Turret Mode", autoAimMode ? "AUTO AIM" : "FORWARD");
         telemetry.addData("Collect Intake Active", isCollectIntakeActive());
 
-        telemetry.addLine("Configurable TeleOp Values");
+        telemetry.addLine("TeleOp Tuneables");
+        telemetry.addData("TeleOp Goal X", "%.2f", TELEOP_GOAL_X);
+        telemetry.addData("TeleOp Goal Y", "%.2f", TELEOP_GOAL_Y);
+        telemetry.addData("Reset X", "%.2f", TELEOP_RESET_X);
+        telemetry.addData("Reset Y", "%.2f", TELEOP_RESET_Y);
+        telemetry.addData("Reset Heading", "%.1f", TELEOP_RESET_HEADING_DEG);
+        telemetry.addData("Forward Turret Servo", "%.3f", FORWARD_TURRET_SERVO);
+        telemetry.addData("Start In Auto Aim", START_IN_AUTO_AIM);
         telemetry.addData("Drive Speed", "%.2f", DRIVE_SPEED);
         telemetry.addData("Intake Turn Multiplier", "%.2f", INTAKE_TURN_MULTIPLIER);
-        telemetry.addData("Forward Turret Servo", "%.3f", FORWARD_TURRET_SERVO);
         telemetry.addData("Shoot Trigger Threshold", "%.2f", SHOOT_TRIGGER_THRESHOLD);
-        telemetry.addData("Collect Intake L", "%.2f", COLLECT_INTAKE_LEFT_POWER);
-        telemetry.addData("Collect Intake R", "%.2f", COLLECT_INTAKE_RIGHT_POWER);
-        telemetry.addData("Shoot Intake L", "%.2f", SHOOT_INTAKE_LEFT_POWER);
-        telemetry.addData("Shoot Intake R", "%.2f", SHOOT_INTAKE_RIGHT_POWER);
 
-        telemetry.addLine("Goal");
-        telemetry.addData("Goal X", "%.2f", getGoalPose().getX());
-        telemetry.addData("Goal Y", "%.2f", getGoalPose().getY());
+        telemetry.addLine("Goal / Distance");
+        telemetry.addData("Target X", "%.2f", getTeleOpGoalPose().getX());
+        telemetry.addData("Target Y", "%.2f", getTeleOpGoalPose().getY());
         telemetry.addData("Distance CM", "%.1f", distCM);
-
-        telemetry.addLine("Blue Goal Reset Pose");
-        telemetry.addData("Reset X", "%.2f", BLUE_GOAL_RESET_X);
-        telemetry.addData("Reset Y", "%.2f", BLUE_GOAL_RESET_Y);
-        telemetry.addData("Reset Heading", "%.1f", BLUE_GOAL_RESET_HEADING_DEG);
 
         telemetry.addLine("Shooter Target Mode");
         telemetry.addData("Static TPS Mode", USE_STATIC_TARGET_TPS);
@@ -454,6 +521,8 @@ public class BlueTeleOp extends OpMode {
         telemetry.addData("Heading", "%.1f", Math.toDegrees(currentPose.getHeading()));
 
         telemetry.addLine("Turret");
+        telemetry.addData("Turret Target X", "%.2f", Turret.targetPose.getX());
+        telemetry.addData("Turret Target Y", "%.2f", Turret.targetPose.getY());
         telemetry.addData("Relative Angle", "%.1f", Turret.relativeAngleDeg);
         telemetry.addData("Desired Servo", "%.3f", Turret.desiredServo);
         telemetry.addData("Current Servo", "%.3f", Turret.currentServo);
@@ -462,11 +531,19 @@ public class BlueTeleOp extends OpMode {
         telemetry.addData("Dynamic Step", "%.4f", Turret.dynamicMaxStep);
         telemetry.addData("At Target", turret.isAtTarget());
 
-        telemetry.addLine("Intake Sensor / LED");
-        telemetry.addData("Raw Sensor", Intake.rawSensorState);
-        telemetry.addData("Ball Detected", Intake.ballDetected);
-        telemetry.addData("Detected Time", "%.2f", Intake.detectedTimeSeconds);
-        telemetry.addData("LED Position", "%.3f", Intake.lastLedPosition);
+        if (SHOW_FULL_TELEMETRY) {
+            telemetry.addLine("Intake Sensor / LED");
+            telemetry.addData("Raw Sensor", Intake.rawSensorState);
+            telemetry.addData("Ball Detected", Intake.ballDetected);
+            telemetry.addData("Detected Time", "%.2f", Intake.detectedTimeSeconds);
+            telemetry.addData("LED Position", "%.3f", Intake.lastLedPosition);
+
+            telemetry.addLine("Intake Powers");
+            telemetry.addData("Collect Left", "%.2f", COLLECT_INTAKE_LEFT_POWER);
+            telemetry.addData("Collect Right", "%.2f", COLLECT_INTAKE_RIGHT_POWER);
+            telemetry.addData("Shoot Left", "%.2f", SHOOT_INTAKE_LEFT_POWER);
+            telemetry.addData("Shoot Right", "%.2f", SHOOT_INTAKE_RIGHT_POWER);
+        }
 
         telemetry.update();
     }

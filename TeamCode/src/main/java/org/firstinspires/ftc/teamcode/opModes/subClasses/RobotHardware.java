@@ -10,10 +10,10 @@ public class RobotHardware {
     public Servo hoodServo = null;
     public Servo blockServo = null;
 
-    public static double hoodSlope = -0.0025;
-    public static double hoodIntercept = 0.9;
+    public static double hoodSlope = -0.00365;
+    public static double hoodIntercept = 0.8;
 
-    public static double hoodVelocityFactor = 0.01;
+    public static double hoodVelocityFactor = 9;
 
 
     public static double hoodMin = 0.3;

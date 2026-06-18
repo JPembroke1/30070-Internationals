@@ -37,9 +37,9 @@ public class Outtake {
     // - If the shooter oscillates around target, reduce kP slightly.
     // ─────────────────────────────────────────────────────────────────────────
 
-    public static double kS = 0.08;
+    public static double kS = 0.09;
     public static double kV = 0.00040;
-    public static double kP = 0.00035;
+    public static double kP = 0.09;
 
     public static double MIN_OUTPUT = 0.0;
     public static double MAX_OUTPUT = 1.0;
@@ -61,11 +61,11 @@ public class Outtake {
     //   when using the blue inset goal target around (6,138).
     // ─────────────────────────────────────────────────────────────────────────
 
-    public static double regressionSlope = 1.75;
-    public static double regressionIntercept = 1200;
+    public static double regressionSlope = 0.9;
+    public static double regressionIntercept = 1560;
 
     public static double MIN_TARGET_TPS = 0;
-    public static double MAX_TARGET_TPS = 1600;
+    public static double MAX_TARGET_TPS = 2000;
 
     // ─────────────────────────────────────────────────────────────────────────
     // At-speed checking

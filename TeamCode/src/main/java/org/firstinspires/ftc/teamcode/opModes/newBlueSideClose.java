@@ -145,7 +145,7 @@ public class newBlueSideClose extends OpMode {
 
         outtake.init(hardwareMap);
         intake.init(hardwareMap);
-        turret.init(hardwareMap);
+        turret.init(hardwareMap, follower::getAngularVelocity);
 
         updateGoalTarget();
     }
