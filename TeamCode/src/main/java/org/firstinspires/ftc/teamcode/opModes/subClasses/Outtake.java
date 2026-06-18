@@ -1,289 +1,439 @@
 package org.firstinspires.ftc.teamcode.opModes.subClasses;
 
-import com.qualcomm.robotcore.hardware.HardwareMap;
 import com.bylazar.configurables.annotations.Configurable;
 import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
-import com.qualcomm.robotcore.hardware.DcMotorSimple;
+import com.qualcomm.robotcore.hardware.HardwareMap;
 
 @Configurable
 public class Outtake {
 
-    public DcMotorEx outtakeMotor1;
-    public DcMotorEx outtakeMotor2;
-
     // ─────────────────────────────────────────────────────────────────────────
-    // Shooter state
+    // Motors
     // ─────────────────────────────────────────────────────────────────────────
 
-    public static double target = 0;
-    public static double currentTPS = 0;
+    private DcMotorEx leftShooter = null;
+    private DcMotorEx rightShooter = null;
 
-    public static double leftVelocity = 0;
-    public static double rightVelocity = 0;
-
-    public static double lastOutput = 0;
-    public static double lastError = 0;
-
-    public static double distanceToGoal = 0;
+    // Change these if your robot configuration names are different.
+    public static String LEFT_SHOOTER_MOTOR_NAME = "leftOuttake";
+    public static String RIGHT_SHOOTER_MOTOR_NAME = "rightOuttake";
 
     // ─────────────────────────────────────────────────────────────────────────
-    // Tuning notes:
-    // - kS helps overcome static friction.
-    // - kV provides the base power needed for the target TPS.
-    // - kP corrects the difference between target TPS and current TPS.
-    // - If output clips at 1.0 too often, kV or kS may be too high.
-    // - If the shooter reaches speed but drops too much when balls feed, increase kP slightly.
-    // - If the shooter oscillates around target, reduce kP slightly.
-    // ─────────────────────────────────────────────────────────────────────────
-
-    public static double kS = 0.09;
-    public static double kV = 0.00040;
-    public static double kP = 0.09;
-
-    public static double MIN_OUTPUT = 0.0;
-    public static double MAX_OUTPUT = 1.0;
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // Linear regression target model
+    // Regression target tuning
     //
-    // targetTPS = (regressionSlope * distanceCM) + regressionIntercept
+    // target TPS = regressionSlope * distanceCM + regressionIntercept
     //
-    // Tuning notes:
-    // - If shots are consistently low/high at all distances, tune regressionIntercept.
-    // - If close shots are good but far shots are wrong, tune regressionSlope.
-    // - Increasing intercept raises all shots by a similar amount.
-    // - Increasing slope mainly affects longer shots more than close shots.
-    //
-    // Current estimate:
-    // - regressionIntercept = 1085.1 was calculated for the inset goal estimate.
-    // - This should put the shooter close to 1500 TPS around field position (72,72)
-    //   when using the blue inset goal target around (6,138).
+    // Keep these values tuneable for match/tuning work.
     // ─────────────────────────────────────────────────────────────────────────
 
-    public static double regressionSlope = 0.9;
-    public static double regressionIntercept = 1560;
+    public static double regressionSlope = 0.0;
+    public static double regressionIntercept = 1500.0;
 
-    public static double MIN_TARGET_TPS = 0;
-    public static double MAX_TARGET_TPS = 2000;
+    public static double minTargetTPS = 800.0;
+    public static double maxTargetTPS = 2300.0;
 
     // ─────────────────────────────────────────────────────────────────────────
-    // At-speed checking
+    // PIDF tuning
     //
-    // Tuning notes:
-    // - TPS_READY_TOLERANCE = 50 means a 1500 TPS target is ready between
-    //   roughly 1450 and 1550 TPS.
-    // - Your current Auto can still use percentage readiness through isAtSpeed(...).
-    // - For more consistent shooting later, Auto can be changed to use isAtSpeedTolerance().
+    // kV:
+    // - Feedforward per TPS.
+    //
+    // kS:
+    // - Static power needed to overcome friction.
+    //
+    // kP:
+    // - Main correction value.
+    //
+    // kI:
+    // - Usually keep at 0 unless you really need it.
+    //
+    // kD:
+    // - Usually keep low or 0 for shooter velocity.
     // ─────────────────────────────────────────────────────────────────────────
 
-    public static double TPS_READY_TOLERANCE = 50;
+    public static double kV = 0.00035;
+    public static double kS = 0.04;
+    public static double kP = 0.00025;
+    public static double kI = 0.0;
+    public static double kD = 0.0;
+
+    public static double minPower = 0.0;
+    public static double maxPower = 1.0;
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Sensor validation tuning
+    //
+    // MIN_VALID_TPS:
+    // - Any velocity below this is treated as invalid while the shooter target
+    //   is active.
+    //
+    // MAX_TPS_MISMATCH:
+    // - If left/right differ by more than this, the side further from last known
+    //   reasonable speed can be ignored.
+    //
+    // MAX_ERROR_FOR_PID:
+    // - Limits correction error so one bad reading cannot cause a huge power spike.
+    //
+    // HOLD_OUTPUT_WHEN_BOTH_INVALID:
+    // - If both velocity sensors look bad, hold last output instead of spiking.
+    // ─────────────────────────────────────────────────────────────────────────
+
+    public static double MIN_VALID_TPS = 50.0;
+    public static double MAX_TPS_MISMATCH = 900.0;
+    public static double MAX_ERROR_FOR_PID = 500.0;
+
+    public static boolean HOLD_OUTPUT_WHEN_BOTH_INVALID = true;
+    public static boolean USE_SENSOR_VALIDATION = true;
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Readiness tuning
+    // ─────────────────────────────────────────────────────────────────────────
+
+    public static double atSpeedToleranceTPS = 80.0;
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Public telemetry values used by TeleOp / Auto
+    // ─────────────────────────────────────────────────────────────────────────
+
+    public static double target = 0.0;
+
+    public static double currentTPS = 0.0;
+    public static double leftVelocity = 0.0;
+    public static double rightVelocity = 0.0;
+
+    public static double effectiveTPS = 0.0;
+
+    public static double lastError = 0.0;
+    public static double lastOutput = 0.0;
+
+    public static double lastFeedForward = 0.0;
+    public static double lastP = 0.0;
+    public static double lastI = 0.0;
+    public static double lastD = 0.0;
+
+    public static boolean leftSensorValid = false;
+    public static boolean rightSensorValid = false;
+    public static boolean bothSensorsValid = false;
+    public static boolean usingLeftOnly = false;
+    public static boolean usingRightOnly = false;
+    public static boolean bothSensorsInvalid = false;
+
+    public static double leftLastValidTPS = 0.0;
+    public static double rightLastValidTPS = 0.0;
+
+    public static double sensorMismatch = 0.0;
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Internal PID state
+    // ─────────────────────────────────────────────────────────────────────────
+
+    private double integral = 0.0;
+    private double previousError = 0.0;
+    private double previousUpdateTime = 0.0;
+    private boolean pidInitialised = false;
 
     // ─────────────────────────────────────────────────────────────────────────
     // Init
     // ─────────────────────────────────────────────────────────────────────────
 
     public void init(HardwareMap hardwareMap) {
-        outtakeMotor1 = hardwareMap.get(DcMotorEx.class, "outtakeLeft");
-        outtakeMotor2 = hardwareMap.get(DcMotorEx.class, "outtakeRight");
+        leftShooter = hardwareMap.get(DcMotorEx.class, LEFT_SHOOTER_MOTOR_NAME);
+        rightShooter = hardwareMap.get(DcMotorEx.class, RIGHT_SHOOTER_MOTOR_NAME);
 
-        outtakeMotor1.setDirection(DcMotorSimple.Direction.FORWARD);
-        outtakeMotor2.setDirection(DcMotorSimple.Direction.REVERSE);
+        leftShooter.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
+        rightShooter.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
 
-        outtakeMotor1.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
-        outtakeMotor2.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+        leftShooter.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.FLOAT);
+        rightShooter.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.FLOAT);
 
-        outtakeMotor1.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.FLOAT);
-        outtakeMotor2.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.FLOAT);
+        resetController();
 
-        target = 0;
-        currentTPS = 0;
-
-        leftVelocity = 0;
-        rightVelocity = 0;
-
-        lastOutput = 0;
-        lastError = 0;
-
-        distanceToGoal = 0;
-
-        outtakeMotor1.setPower(0);
-        outtakeMotor2.setPower(0);
+        stopOuttake();
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // Target setting
+    // Target controls
     // ─────────────────────────────────────────────────────────────────────────
 
     public void setTargetTPS(double targetTPS) {
-        target = clampTarget(targetTPS);
-    }
-
-    public void startOuttaking(double targetTPS) {
-        setTargetTPS(targetTPS);
-    }
-
-    public void shootNear() {
-        setTargetTPS(1200);
-    }
-
-    public void shootFar() {
-        setTargetTPS(1550);
+        target = clamp(targetTPS, minTargetTPS, maxTargetTPS);
     }
 
     public void linearRegression(double distanceCM) {
-        distanceToGoal = distanceCM;
-        target = clampTarget((regressionSlope * distanceCM) + regressionIntercept);
-    }
-
-    public void linearRegression(double formula, double distanceCM, double yIntercept) {
-        distanceToGoal = distanceCM;
-        target = clampTarget((formula * distanceCM) + yIntercept);
-    }
-
-    public void forDistance(double distanceCM) {
-        linearRegression(distanceCM);
+        double calculatedTarget = (regressionSlope * distanceCM) + regressionIntercept;
+        setTargetTPS(calculatedTarget);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // Shooter update
+    // Main update
     //
-    // Method name kept as updatePIDF() so existing Auto/TeleOp still compiles.
+    // This is where sensor validation prevents the runaway spike.
     //
-    // This is not using the old FTCLib PIDFController anymore.
-    // Internally this now uses:
-    //
-    // output = kS + (kV * targetTPS) + (kP * error)
-    //
-    // Tuning notes:
-    // - If target is 0 or less, motors are stopped.
-    // - Motor output is clamped between MIN_OUTPUT and MAX_OUTPUT.
-    // - Both shooter motors receive the same positive output.
+    // Core logic:
+    // - If both sensors are valid, use average TPS.
+    // - If left is invalid but right is valid, use right TPS only.
+    // - If right is invalid but left is valid, use left TPS only.
+    // - If both are invalid, hold last output or stop safely.
     // ─────────────────────────────────────────────────────────────────────────
 
     public void updatePIDF() {
-        updateVelocityReadings();
-
-        if (target <= 0) {
-            lastError = 0;
-            lastOutput = 0;
-
-            if (outtakeMotor1 != null) {
-                outtakeMotor1.setPower(0);
-            }
-
-            if (outtakeMotor2 != null) {
-                outtakeMotor2.setPower(0);
-            }
-
+        if (leftShooter == null || rightShooter == null) {
             return;
         }
 
-        lastError = target - currentTPS;
+        readVelocities();
+        validateSensors();
+        chooseEffectiveTPS();
 
-        double output = kS + (kV * target) + (kP * lastError);
-        output = clampPower(output);
+        if (target <= 0.0) {
+            stopOuttake();
+            return;
+        }
 
+        if (bothSensorsInvalid && HOLD_OUTPUT_WHEN_BOTH_INVALID) {
+            setShooterPower(lastOutput);
+            return;
+        }
+
+        double now = getTimeSeconds();
+        double dt;
+
+        if (!pidInitialised) {
+            previousUpdateTime = now;
+            previousError = 0.0;
+            integral = 0.0;
+            pidInitialised = true;
+            dt = 0.02;
+        } else {
+            dt = now - previousUpdateTime;
+            if (dt <= 0.001) {
+                dt = 0.02;
+            }
+        }
+
+        double rawError = target - effectiveTPS;
+        double error = clamp(rawError, -MAX_ERROR_FOR_PID, MAX_ERROR_FOR_PID);
+
+        integral += error * dt;
+
+        // Basic anti-windup.
+        integral = clamp(integral, -1000.0, 1000.0);
+
+        double derivative = (error - previousError) / dt;
+
+        double feedForward = (kV * target) + kS;
+        double pTerm = kP * error;
+        double iTerm = kI * integral;
+        double dTerm = kD * derivative;
+
+        double output = feedForward + pTerm + iTerm + dTerm;
+        output = clamp(output, minPower, maxPower);
+
+        setShooterPower(output);
+
+        currentTPS = effectiveTPS;
+
+        lastError = rawError;
         lastOutput = output;
 
-        outtakeMotor1.setPower(output);
-        outtakeMotor2.setPower(output);
+        lastFeedForward = feedForward;
+        lastP = pTerm;
+        lastI = iTerm;
+        lastD = dTerm;
+
+        previousError = error;
+        previousUpdateTime = now;
     }
 
-    public void updateVelocityReadings() {
-        if (outtakeMotor1 == null || outtakeMotor2 == null) {
-            leftVelocity = 0;
-            rightVelocity = 0;
-            currentTPS = 0;
+    // ─────────────────────────────────────────────────────────────────────────
+    // Velocity reading
+    // ─────────────────────────────────────────────────────────────────────────
+
+    private void readVelocities() {
+        leftVelocity = safeVelocity(leftShooter);
+        rightVelocity = safeVelocity(rightShooter);
+
+        sensorMismatch = Math.abs(leftVelocity - rightVelocity);
+    }
+
+    private double safeVelocity(DcMotorEx motor) {
+        if (motor == null) {
+            return 0.0;
+        }
+
+        double velocity = motor.getVelocity();
+
+        if (Double.isNaN(velocity) || Double.isInfinite(velocity)) {
+            return 0.0;
+        }
+
+        return Math.abs(velocity);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Sensor validation
+    // ─────────────────────────────────────────────────────────────────────────
+
+    private void validateSensors() {
+        if (!USE_SENSOR_VALIDATION) {
+            leftSensorValid = true;
+            rightSensorValid = true;
+            bothSensorsValid = true;
+            bothSensorsInvalid = false;
             return;
         }
 
-        leftVelocity = Math.abs(outtakeMotor1.getVelocity());
-        rightVelocity = Math.abs(outtakeMotor2.getVelocity());
+        leftSensorValid = leftVelocity >= MIN_VALID_TPS;
+        rightSensorValid = rightVelocity >= MIN_VALID_TPS;
 
-        currentTPS = (leftVelocity + rightVelocity) / 2.0;
+        if (leftSensorValid) {
+            leftLastValidTPS = leftVelocity;
+        }
+
+        if (rightSensorValid) {
+            rightLastValidTPS = rightVelocity;
+        }
+
+        // If both are technically valid but wildly different, reject the one
+        // that is further from the current target.
+        if (leftSensorValid && rightSensorValid && sensorMismatch > MAX_TPS_MISMATCH) {
+            double leftErrorToTarget = Math.abs(target - leftVelocity);
+            double rightErrorToTarget = Math.abs(target - rightVelocity);
+
+            if (leftErrorToTarget > rightErrorToTarget) {
+                leftSensorValid = false;
+            } else {
+                rightSensorValid = false;
+            }
+        }
+
+        bothSensorsValid = leftSensorValid && rightSensorValid;
+        bothSensorsInvalid = !leftSensorValid && !rightSensorValid;
     }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Effective TPS selection
+    // ─────────────────────────────────────────────────────────────────────────
+
+    private void chooseEffectiveTPS() {
+        usingLeftOnly = false;
+        usingRightOnly = false;
+
+        if (bothSensorsValid) {
+            effectiveTPS = (leftVelocity + rightVelocity) / 2.0;
+            currentTPS = effectiveTPS;
+            return;
+        }
+
+        if (leftSensorValid && !rightSensorValid) {
+            effectiveTPS = leftVelocity;
+            currentTPS = effectiveTPS;
+            usingLeftOnly = true;
+            return;
+        }
+
+        if (rightSensorValid && !leftSensorValid) {
+            effectiveTPS = rightVelocity;
+            currentTPS = effectiveTPS;
+            usingRightOnly = true;
+            return;
+        }
+
+        // Both invalid.
+        // This prevents the controller from thinking TPS is 0 and spiking power.
+        bothSensorsInvalid = true;
+
+        if (HOLD_OUTPUT_WHEN_BOTH_INVALID) {
+            effectiveTPS = target;
+        } else {
+            effectiveTPS = 0.0;
+        }
+
+        currentTPS = effectiveTPS;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Stop / reset
+    // ─────────────────────────────────────────────────────────────────────────
 
     public void stopOuttake() {
-        target = 0;
-        lastError = 0;
-        lastOutput = 0;
+        target = 0.0;
 
-        if (outtakeMotor1 != null) {
-            outtakeMotor1.setPower(0);
+        setShooterPower(0.0);
+
+        currentTPS = 0.0;
+        effectiveTPS = 0.0;
+
+        lastError = 0.0;
+        lastOutput = 0.0;
+
+        lastFeedForward = 0.0;
+        lastP = 0.0;
+        lastI = 0.0;
+        lastD = 0.0;
+
+        resetController();
+    }
+
+    private void resetController() {
+        integral = 0.0;
+        previousError = 0.0;
+        previousUpdateTime = getTimeSeconds();
+        pidInitialised = false;
+    }
+
+    private void setShooterPower(double power) {
+        double clipped = clamp(power, minPower, maxPower);
+
+        if (leftShooter != null) {
+            leftShooter.setPower(clipped);
         }
 
-        if (outtakeMotor2 != null) {
-            outtakeMotor2.setPower(0);
+        if (rightShooter != null) {
+            rightShooter.setPower(clipped);
         }
+
+        lastOutput = clipped;
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // Readiness helpers
-    //
-    // isAtSpeed(threshold):
-    // - percentage-based check.
-    // - Example: threshold 0.95 means currentTPS must be at least 95% of target.
-    //
-    // isAtSpeedTolerance():
-    // - fixed TPS error check.
-    // - Usually better for consistent shooting once tuning is stable.
+    // Speed readiness helpers
     // ─────────────────────────────────────────────────────────────────────────
 
-    public boolean isAtSpeed(double threshold) {
-        return target > 0 && currentTPS >= target * threshold;
+    public boolean isAtSpeed(double percentOfTarget) {
+        if (target <= 0.0) {
+            return false;
+        }
+
+        if (bothSensorsInvalid) {
+            return false;
+        }
+
+        return effectiveTPS >= target * percentOfTarget;
     }
 
     public boolean isAtSpeedTolerance() {
-        return target > 0 && Math.abs(target - currentTPS) <= TPS_READY_TOLERANCE;
-    }
+        if (target <= 0.0) {
+            return false;
+        }
 
-    public boolean isAtSpeedTolerance(double toleranceTPS) {
-        return target > 0 && Math.abs(target - currentTPS) <= toleranceTPS;
-    }
+        if (bothSensorsInvalid) {
+            return false;
+        }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // Getter helpers
-    // ─────────────────────────────────────────────────────────────────────────
-
-    public double getTargetTPS() {
-        return target;
-    }
-
-    public double getCurrentTPS() {
-        return currentTPS;
-    }
-
-    public double getLeftVelocity() {
-        return leftVelocity;
-    }
-
-    public double getRightVelocity() {
-        return rightVelocity;
-    }
-
-    public double getLastOutput() {
-        return lastOutput;
-    }
-
-    public double getLastError() {
-        return lastError;
+        return Math.abs(target - effectiveTPS) <= atSpeedToleranceTPS;
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // Utility helpers
+    // Utility
     // ─────────────────────────────────────────────────────────────────────────
 
-    private double clampTarget(double value) {
-        return clamp(value, MIN_TARGET_TPS, MAX_TARGET_TPS);
-    }
-
-    private double clampPower(double value) {
-        return clamp(value, MIN_OUTPUT, MAX_OUTPUT);
+    private double getTimeSeconds() {
+        return System.nanoTime() / 1_000_000_000.0;
     }
 
     private double clamp(double value, double min, double max) {
         return Math.max(min, Math.min(max, value));
     }
 }
-

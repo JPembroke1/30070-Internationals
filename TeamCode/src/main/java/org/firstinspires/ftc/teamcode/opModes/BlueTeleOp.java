@@ -684,11 +684,6 @@ public class BlueTeleOp extends OpMode {
         telemetry.addData("Turret Forward Servo", "%.3f", Turret.FORWARD_SERVO);
         telemetry.addData("Turret Target X", "%.2f", Turret.targetPose.getX());
         telemetry.addData("Turret Target Y", "%.2f", Turret.targetPose.getY());
-        telemetry.addData("Robot VX", "%.2f", Turret.vx);
-        telemetry.addData("Robot VY", "%.2f", Turret.vy);
-        telemetry.addData("Robot Speed", "%.2f", Turret.speed);
-        telemetry.addData("Angular Velocity Used", "%.4f", Turret.angularVelocity);
-        telemetry.addData("Comp Active", Turret.compActive);
         telemetry.addData("Lead X", "%.2f", Turret.leadX);
         telemetry.addData("Lead Y", "%.2f", Turret.leadY);
         telemetry.addData("Desired Servo", "%.3f", Turret.desiredServo);
