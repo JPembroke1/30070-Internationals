@@ -10,506 +10,167 @@ import java.util.function.Supplier;
 @Configurable
 public class Turret {
 
-    public Servo rotationalTurretServo = null;
+    // ─────────────────────────────────────────────────────────────────────────
+    // Hardware
+    // ─────────────────────────────────────────────────────────────────────────
+
+    private Servo turretServo;
+
+    public static String TURRET_SERVO_NAME = "turret";
 
     // ─────────────────────────────────────────────────────────────────────────
-    // Servo position tuneables
+    // Servo tuning
     // ─────────────────────────────────────────────────────────────────────────
 
     public static double FORWARD_SERVO = 0.5;
 
-    public static double minServo = 0.00;
-    public static double maxServo = 1.00;
-
     // ─────────────────────────────────────────────────────────────────────────
-    // Movement tuneables
+    // AIM OFFSET
     //
-    // kP:
-    // - Higher = more aggressive servo correction.
-    // - Lower = smoother, slower correction.
+    // Applies a constant offset AFTER turret math.
     //
-    // minStep:
-    // - Smallest allowed move when close to target.
+    // Tuning:
+    // - too far RIGHT → decrease
+    // - too far LEFT → increase
     //
-    // maxStep:
-    // - Largest allowed move when far from target.
-    //
-    // slowZone:
-    // - Error range where movement slows down.
-    //
-    // servoDeadband:
-    // - If error is smaller than this, turret stops correcting.
+    // Start with ±0.01 adjustments
     // ─────────────────────────────────────────────────────────────────────────
 
-    public static double kP = 1.8;
-
-    public static double minStep = 0.004;
-    public static double maxStep = 0.045;
-    public static double slowZone = 0.08;
-    public static double servoDeadband = 0.003;
+    public static double AIM_OFFSET = 0.0;
 
     // ─────────────────────────────────────────────────────────────────────────
-    // Angle-to-servo tuneables
-    //
-    // turretScale:
-    // - If turret under-aims, increase slightly.
-    // - If turret over-aims, decrease slightly.
-    // - If turret aims opposite direction, make this negative.
-    //
-    // turretCentreOffset:
-    // - Small mechanical centre correction.
+    // Target
     // ─────────────────────────────────────────────────────────────────────────
 
-    public static double turretScale = 1.15;
-    public static double turretCentreOffset = 0.0;
+    public static Pose targetPose = new Pose(0, 0, 0);
 
     // ─────────────────────────────────────────────────────────────────────────
-    // Velocity compensation tuneables
-    //
-    // USE_VELOCITY_COMPENSATION:
-    // - Master switch.
-    //
-    // AUTO_DISABLE_VELOCITY_COMPENSATION:
-    // - Turns compensation off when robot is nearly stationary.
-    //
-    // MIN_VELOCITY_FOR_COMPENSATION:
-    // - Minimum field speed in inches/sec before compensation activates.
-    //
-    // SHOT_TIME_SECONDS:
-    // - Estimated ball flight time.
-    //
-    // VELOCITY_COMPENSATION_GAIN:
-    // - 1.0 = full compensation.
-    // - 0.5 = half compensation.
-    //
-    // MAX_LEAD_INCHES:
-    // - Safety clamp to prevent wild aim offsets.
+    // Telemetry values
     // ─────────────────────────────────────────────────────────────────────────
-
-    public static boolean USE_VELOCITY_COMPENSATION = true;
-    public static boolean AUTO_DISABLE_VELOCITY_COMPENSATION = true;
-
-    public static double MIN_VELOCITY_FOR_COMPENSATION = 2.0;
-
-    public static double SHOT_TIME_SECONDS = 0.25;
-    public static double VELOCITY_COMPENSATION_GAIN = 0.5;
-    public static double MAX_LEAD_INCHES = 12.0;
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // Optional angular velocity compensation
-    //
-    // Leave disabled until normal velocity compensation is tuned.
-    // ─────────────────────────────────────────────────────────────────────────
-
-    public static boolean USE_ANGULAR_VELOCITY_COMPENSATION = false;
-    public static double ANGULAR_COMPENSATION_GAIN = 0.5;
-
-    private Supplier<Double> angularVelocitySupplier = null;
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // Target pose
-    //
-    // TeleOp / Auto should set this using:
-    // turret.setTargetPose(goalPose);
-    // ─────────────────────────────────────────────────────────────────────────
-
-    public static Pose targetPose = new Pose(6, 138, 155);
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // Robot velocity values
-    //
-    // These must be field-relative inches/sec.
-    // ─────────────────────────────────────────────────────────────────────────
-
-    public static double robotVelocityX = 0.0;
-    public static double robotVelocityY = 0.0;
-    public static double robotSpeed = 0.0;
-
-    public static double robotAngularVelocityRadPerSec = 0.0;
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // Debug / telemetry values
-    // ─────────────────────────────────────────────────────────────────────────
-
-    public static double robotX = 0.0;
-    public static double robotY = 0.0;
-
-    public static double targetX = 6.0;
-    public static double targetY = 155.0;
-
-    public static double compensatedTargetX = 6.0;
-    public static double compensatedTargetY = 155.0;
-
-    public static double leadX = 0.0;
-    public static double leadY = 0.0;
-    public static double leadMagnitude = 0.0;
-
-    public static double dx = 0.0;
-    public static double dy = 0.0;
-
-    public static double robotHeadingDeg = 0.0;
-    public static double predictedHeadingDeg = 0.0;
-    public static double targetWorldAngleDeg = 0.0;
-    public static double relativeAngleDeg = 0.0;
 
     public static double desiredServo = 0.5;
     public static double currentServo = 0.5;
+
     public static double servoError = 0.0;
-    public static double appliedCorrection = 0.0;
-    public static double dynamicMaxStep = 0.0;
 
-    public static boolean servoReady = false;
-    public static boolean robotPoseValid = false;
-    public static boolean targetPoseValid = false;
+    public static double leadX = 0.0;
+    public static double leadY = 0.0;
 
-    public static boolean velocityDataActive = false;
-    public static boolean velocityCompensationActive = false;
-    public static boolean velocityCompensationAutoDisabled = false;
+    // ─────────────────────────────────────────────────────────────────────────
+    // Velocity compensation
+    // ─────────────────────────────────────────────────────────────────────────
+
+    private Supplier<Double> angularVelocitySupplier;
+
+    private double robotVelocityX = 0.0;
+    private double robotVelocityY = 0.0;
+
+    public static boolean velocityCompensationActive = true;
 
     // ─────────────────────────────────────────────────────────────────────────
     // Init
     // ─────────────────────────────────────────────────────────────────────────
 
-    public void init(HardwareMap hardwareMap) {
-        rotationalTurretServo = hardwareMap.get(Servo.class, "rotationalTurretServo");
-
-        angularVelocitySupplier = null;
-
-        targetX = targetPose.getX();
-        targetY = targetPose.getY();
-
-        compensatedTargetX = targetX;
-        compensatedTargetY = targetY;
-
-        targetPoseValid = true;
-
-        clearRobotVelocity();
-        setForward();
-    }
-
     public void init(HardwareMap hardwareMap, Supplier<Double> angularVelocitySupplier) {
-        rotationalTurretServo = hardwareMap.get(Servo.class, "rotationalTurretServo");
-
+        turretServo = hardwareMap.get(Servo.class, TURRET_SERVO_NAME);
         this.angularVelocitySupplier = angularVelocitySupplier;
 
-        targetX = targetPose.getX();
-        targetY = targetPose.getY();
-
-        compensatedTargetX = targetX;
-        compensatedTargetY = targetY;
-
-        targetPoseValid = true;
-
-        clearRobotVelocity();
         setForward();
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // Basic controls
+    // Target control
     // ─────────────────────────────────────────────────────────────────────────
-
-    public void centre() {
-        setForward();
-    }
-
-    public void setForward() {
-        setServoDirect(FORWARD_SERVO);
-    }
-
-    public void setPose(Pose pose) {
-        setTargetPose(pose);
-    }
 
     public void setTargetPose(Pose pose) {
-        if (pose == null) {
-            targetPoseValid = false;
-            return;
-        }
-
         targetPose = pose;
-
-        targetX = pose.getX();
-        targetY = pose.getY();
-
-        compensatedTargetX = targetX;
-        compensatedTargetY = targetY;
-
-        targetPoseValid = true;
-    }
-
-    public Pose getTargetPose() {
-        return targetPose;
-    }
-
-    public void setServoDirect(double position) {
-        double clipped = clamp(position, minServo, maxServo);
-
-        if (rotationalTurretServo != null) {
-            rotationalTurretServo.setPosition(clipped);
-            servoReady = true;
-        } else {
-            servoReady = false;
-        }
-
-        currentServo = clipped;
-        desiredServo = clipped;
-        servoError = 0.0;
-        appliedCorrection = 0.0;
-        dynamicMaxStep = 0.0;
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // Velocity input
-    //
-    // These values should be field-relative inches/sec.
+    // Velocity input (field-relative)
     // ─────────────────────────────────────────────────────────────────────────
 
-    public void setRobotVelocityField(double velocityXInchesPerSecond, double velocityYInchesPerSecond) {
-        robotVelocityX = velocityXInchesPerSecond;
-        robotVelocityY = velocityYInchesPerSecond;
-
-        robotSpeed = Math.hypot(robotVelocityX, robotVelocityY);
-
-        velocityDataActive = robotSpeed > 0.001;
+    public void setRobotVelocityField(double vx, double vy) {
+        robotVelocityX = vx;
+        robotVelocityY = vy;
     }
 
     public void clearRobotVelocity() {
         robotVelocityX = 0.0;
         robotVelocityY = 0.0;
-        robotSpeed = 0.0;
-
-        robotAngularVelocityRadPerSec = 0.0;
-
-        velocityDataActive = false;
-        velocityCompensationActive = false;
-        velocityCompensationAutoDisabled = false;
-
-        leadX = 0.0;
-        leadY = 0.0;
-        leadMagnitude = 0.0;
-
-        compensatedTargetX = targetX;
-        compensatedTargetY = targetY;
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // Main aiming methods
+    // Aim turret
     //
-    // aimTurret(robotPose):
-    // - Uses last velocity values passed by setRobotVelocityField().
-    //
-    // aimTurret(robotPose, vx, vy):
-    // - Updates velocity, then aims.
+    // Calculates:
+    // - angle to goal
+    // - optional velocity lead
+    // - converts to servo position
+    // - applies AIM_OFFSET
     // ─────────────────────────────────────────────────────────────────────────
 
-    public void aimTurret(Pose robotPose) {
-        aimTurretInternal(robotPose);
-    }
+    public void aimTurret(Pose robotPose, double vx, double vy) {
 
-    public void aimTurret(Pose robotPose, double velocityXInchesPerSecond, double velocityYInchesPerSecond) {
-        setRobotVelocityField(velocityXInchesPerSecond, velocityYInchesPerSecond);
-        aimTurretInternal(robotPose);
-    }
-
-    private void aimTurretInternal(Pose robotPose) {
-        if (rotationalTurretServo == null) {
-            servoReady = false;
+        if (robotPose == null || turretServo == null) {
             return;
         }
 
-        servoReady = true;
+        double dx = targetPose.getX() - robotPose.getX();
+        double dy = targetPose.getY() - robotPose.getY();
 
-        if (robotPose == null) {
-            robotPoseValid = false;
-            return;
+        // Velocity compensation
+        if (velocityCompensationActive) {
+            leadX = vx * 0.01;
+            leadY = vy * 0.01;
+        } else {
+            leadX = 0.0;
+            leadY = 0.0;
         }
 
-        robotPoseValid = true;
+        double compensatedX = dx + leadX;
+        double compensatedY = dy + leadY;
 
-        if (targetPose == null) {
-            targetPoseValid = false;
-            return;
-        }
+        double angle = Math.atan2(compensatedY, compensatedX);
 
-        targetPoseValid = true;
+        // Convert angle to servo position
+        double robotHeading = robotPose.getHeading();
+        double relativeAngle = angle - robotHeading;
 
-        robotX = robotPose.getX();
-        robotY = robotPose.getY();
+        // Normalise
+        while (relativeAngle > Math.PI) relativeAngle -= 2 * Math.PI;
+        while (relativeAngle < -Math.PI) relativeAngle += 2 * Math.PI;
 
-        targetX = targetPose.getX();
-        targetY = targetPose.getY();
+        desiredServo = FORWARD_SERVO + (relativeAngle / Math.PI) * 0.5;
 
-        double robotHeadingRad = robotPose.getHeading();
-        robotHeadingDeg = Math.toDegrees(robotHeadingRad);
+        // ─────────────────────────────────────────────────────────
+        // APPLY OFFSET HERE (FINAL STEP)
+        // ─────────────────────────────────────────────────────────
 
-        updateAngularVelocity();
+        double commanded = desiredServo + AIM_OFFSET;
 
-        double predictedHeadingRad = robotHeadingRad;
+        commanded = clamp(commanded, 0.0, 1.0);
 
-        if (USE_ANGULAR_VELOCITY_COMPENSATION) {
-            predictedHeadingRad += robotAngularVelocityRadPerSec
-                    * SHOT_TIME_SECONDS
-                    * ANGULAR_COMPENSATION_GAIN;
-        }
+        turretServo.setPosition(commanded);
 
-        predictedHeadingDeg = Math.toDegrees(predictedHeadingRad);
-
-        calculateCompensatedTarget();
-
-        dx = compensatedTargetX - robotX;
-        dy = compensatedTargetY - robotY;
-
-        double targetWorldAngleRad = Math.atan2(dy, dx);
-        targetWorldAngleDeg = Math.toDegrees(targetWorldAngleRad);
-
-        double relativeAngleRad = angleWrap(targetWorldAngleRad - predictedHeadingRad);
-        relativeAngleDeg = Math.toDegrees(relativeAngleRad);
-
-        desiredServo = angleToServo(relativeAngleRad);
-        currentServo = rotationalTurretServo.getPosition();
+        currentServo = commanded;
         servoError = desiredServo - currentServo;
-
-        double absError = Math.abs(servoError);
-
-        if (absError <= servoDeadband) {
-            appliedCorrection = 0.0;
-            dynamicMaxStep = 0.0;
-            return;
-        }
-
-        dynamicMaxStep = calculateDynamicMaxStep(absError);
-
-        double correction = servoError * kP;
-        correction = clamp(correction, -dynamicMaxStep, dynamicMaxStep);
-
-        appliedCorrection = correction;
-
-        double newServoPosition = currentServo + correction;
-        newServoPosition = clamp(newServoPosition, minServo, maxServo);
-
-        rotationalTurretServo.setPosition(newServoPosition);
-        currentServo = newServoPosition;
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // Velocity compensation
-    //
-    // lead = velocity × shot time × gain
-    //
-    // compensated target = target - lead
-    //
-    // If the robot is moving right, the ball carries rightward velocity.
-    // So we aim slightly left by subtracting the velocity lead.
+    // Forward position
     // ─────────────────────────────────────────────────────────────────────────
 
-    private void calculateCompensatedTarget() {
-        if (!USE_VELOCITY_COMPENSATION) {
-            disableVelocityCompensation(false);
-            return;
+    public void setForward() {
+        if (turretServo != null) {
+            turretServo.setPosition(FORWARD_SERVO);
+            currentServo = FORWARD_SERVO;
         }
-
-        robotSpeed = Math.hypot(robotVelocityX, robotVelocityY);
-
-        if (AUTO_DISABLE_VELOCITY_COMPENSATION
-                && robotSpeed < MIN_VELOCITY_FOR_COMPENSATION) {
-            disableVelocityCompensation(true);
-            return;
-        }
-
-        velocityCompensationActive = true;
-        velocityCompensationAutoDisabled = false;
-
-        leadX = robotVelocityX * SHOT_TIME_SECONDS * VELOCITY_COMPENSATION_GAIN;
-        leadY = robotVelocityY * SHOT_TIME_SECONDS * VELOCITY_COMPENSATION_GAIN;
-
-        leadMagnitude = Math.hypot(leadX, leadY);
-
-        if (leadMagnitude > MAX_LEAD_INCHES && leadMagnitude > 0.0) {
-            double scale = MAX_LEAD_INCHES / leadMagnitude;
-
-            leadX *= scale;
-            leadY *= scale;
-
-            leadMagnitude = MAX_LEAD_INCHES;
-        }
-
-        compensatedTargetX = targetX - leadX;
-        compensatedTargetY = targetY - leadY;
-    }
-
-    private void disableVelocityCompensation(boolean autoDisabled) {
-        velocityCompensationActive = false;
-        velocityCompensationAutoDisabled = autoDisabled;
-
-        leadX = 0.0;
-        leadY = 0.0;
-        leadMagnitude = 0.0;
-
-        compensatedTargetX = targetX;
-        compensatedTargetY = targetY;
-    }
-
-    private void updateAngularVelocity() {
-        if (angularVelocitySupplier == null) {
-            robotAngularVelocityRadPerSec = 0.0;
-            return;
-        }
-
-        Double suppliedAngularVelocity = angularVelocitySupplier.get();
-
-        if (suppliedAngularVelocity == null) {
-            robotAngularVelocityRadPerSec = 0.0;
-            return;
-        }
-
-        robotAngularVelocityRadPerSec = suppliedAngularVelocity;
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // Conversion helpers
+    // Utility
     // ─────────────────────────────────────────────────────────────────────────
-
-    private double angleToServo(double relativeAngleRad) {
-        double servoPosition = FORWARD_SERVO
-                + turretCentreOffset
-                + turretScale * (relativeAngleRad / Math.PI);
-
-        return clamp(servoPosition, minServo, maxServo);
-    }
-
-    private double calculateDynamicMaxStep(double absError) {
-        if (absError >= slowZone) {
-            return maxStep;
-        }
-
-        double scale = absError / slowZone;
-
-        return minStep + ((maxStep - minStep) * scale);
-    }
-
-    public boolean isAtTarget() {
-        return Math.abs(servoError) <= servoDeadband;
-    }
-
-    public boolean isAtTarget(double tolerance) {
-        return Math.abs(servoError) <= tolerance;
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // Math helpers
-    // ─────────────────────────────────────────────────────────────────────────
-
-    private double angleWrap(double angle) {
-        while (angle <= -Math.PI) {
-            angle += 2.0 * Math.PI;
-        }
-
-        while (angle > Math.PI) {
-            angle -= 2.0 * Math.PI;
-        }
-
-        return angle;
-    }
 
     private double clamp(double value, double min, double max) {
         return Math.max(min, Math.min(max, value));

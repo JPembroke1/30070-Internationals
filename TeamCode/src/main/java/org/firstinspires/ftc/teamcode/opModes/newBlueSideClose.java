@@ -317,13 +317,6 @@ public class newBlueSideClose extends OpMode {
 
         telemetry.addLine("Turret Compensation");
         telemetry.addData("Velocity Comp Active", Turret.velocityCompensationActive);
-        telemetry.addData("Velocity Auto Disabled", Turret.velocityCompensationAutoDisabled);
-        telemetry.addData("Robot Speed", "%.2f", Turret.robotSpeed);
-        telemetry.addData("Lead X", "%.2f", Turret.leadX);
-        telemetry.addData("Lead Y", "%.2f", Turret.leadY);
-        telemetry.addData("Lead Mag", "%.2f", Turret.leadMagnitude);
-        telemetry.addData("Comp Target X", "%.2f", Turret.compensatedTargetX);
-        telemetry.addData("Comp Target Y", "%.2f", Turret.compensatedTargetY);
 
         telemetry.addLine("Shooter Regression");
         telemetry.addData("Regression Slope", "%.4f", Outtake.regressionSlope);
