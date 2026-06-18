@@ -113,7 +113,7 @@ public class Turret {
     // turret.setTargetPose(goalPose);
     // ─────────────────────────────────────────────────────────────────────────
 
-    public static Pose targetPose = new Pose(6, 138, 0);
+    public static Pose targetPose = new Pose(6, 138, 155);
 
     // ─────────────────────────────────────────────────────────────────────────
     // Robot velocity values
@@ -135,10 +135,10 @@ public class Turret {
     public static double robotY = 0.0;
 
     public static double targetX = 6.0;
-    public static double targetY = 138.0;
+    public static double targetY = 155.0;
 
     public static double compensatedTargetX = 6.0;
-    public static double compensatedTargetY = 138.0;
+    public static double compensatedTargetY = 155.0;
 
     public static double leadX = 0.0;
     public static double leadY = 0.0;

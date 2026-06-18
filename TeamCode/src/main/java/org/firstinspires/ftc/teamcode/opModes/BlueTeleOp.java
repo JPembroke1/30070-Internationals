@@ -47,7 +47,7 @@ public class BlueTeleOp extends OpMode {
 
     public static double TELEOP_RESET_X = 24.0;
     public static double TELEOP_RESET_Y = 138.0;
-    public static double TELEOP_RESET_HEADING_DEG = 177.0;
+    public static double TELEOP_RESET_HEADING_DEG = 145.0;
 
     private boolean previousG1DpadUp = false;
     private boolean previousG1DpadRight = false;
@@ -160,7 +160,7 @@ public class BlueTeleOp extends OpMode {
         if (PoseStorage.currentPose != null) {
             follower.setStartingPose(PoseStorage.currentPose);
         } else {
-            follower.setStartingPose(new Pose(24, 138, Math.toRadians(177)));
+            follower.setStartingPose(new Pose(24, 138, Math.toRadians(145)));
         }
 
         outtake = new Outtake();

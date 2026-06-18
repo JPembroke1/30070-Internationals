@@ -57,10 +57,10 @@ public class newBlueSideClose extends OpMode {
     //
     // GATE_COLLECT_SECONDS:
     // - used for stack/gate collection waits.
-    // - now used at the overflow gate after pathToPos7.
+    // - also used at the overflow gate after pathToPos7.
     // ─────────────────────────────────────────────────────────────────────────
 
-    public static double SHOOT_SETTLE_SECONDS = 0.35;
+    public static double SHOOT_SETTLE_SECONDS = 0.5;
     public static double SHOOT_FEED_SECONDS = 2.0;
     public static double GATE_COLLECT_SECONDS = 3.0;
 
@@ -131,13 +131,13 @@ public class newBlueSideClose extends OpMode {
     // Field poses
     // ─────────────────────────────────────────────────────────────────────────
 
-    private final Pose startPose = new Pose(21, 121, Math.toRadians(143));
-    private final Pose Shoot = new Pose(60, 80, Math.toRadians(177));
-    private final Pose Stack_1 = new Pose(17, 82, Math.toRadians(177));
-    private final Pose Stack_2 = new Pose(40, 56, Math.toRadians(170));
-    private final Pose EatStack_2 = new Pose(15, 60, Math.toRadians(170));
-    private final Pose OverFlow = new Pose(13, 60, Math.toRadians(150));
-    private final Pose End = new Pose(50, 70, Math.toRadians(0));
+    private final Pose startPose = new Pose(21, 121, Math.toRadians(145));
+    private final Pose Shoot = new Pose(60, 86, Math.toRadians(180));
+    private final Pose Stack_1 = new Pose(13, 86, Math.toRadians(180));
+    private final Pose Stack_2 = new Pose(40, 60, Math.toRadians(180));
+    private final Pose EatStack_2 = new Pose(15, 60, Math.toRadians(180));
+    private final Pose OverFlow = new Pose(15, 58, Math.toRadians(145));
+    private final Pose End = new Pose(50, 70, Math.toRadians(180));
 
     // ─────────────────────────────────────────────────────────────────────────
     // Path chains
@@ -192,7 +192,8 @@ public class newBlueSideClose extends OpMode {
         telemetry.addData("Goal Y", "%.2f", GOAL_Y);
         telemetry.addData("Regression", "ON for whole auto");
         telemetry.addData("Gate Collect Seconds", "%.1f", GATE_COLLECT_SECONDS);
-        telemetry.addData("Path 1 Intake", "ON");
+        telemetry.addData("Path 1 Intake", "OFF");
+        telemetry.addData("Path 2 Intake", "ON");
         telemetry.addData("Overflow Gate Wait", "ON after path 7");
         telemetry.addData("Turret Forward Servo", "%.3f", Turret.FORWARD_SERVO);
         telemetry.update();
@@ -254,32 +255,31 @@ public class newBlueSideClose extends OpMode {
                 infinite(this::robotPeriodic),
 
                 sequential(
-                        // Path 1 now collects while driving, blocker closed.
-                        followCollectWithTimeout(pathToPos1, TIMEOUT_PATH_1),
+                        // Path 1: drive to shooting position. Intake OFF.
+                        followWithTimeout(pathToPos1, TIMEOUT_PATH_1),
 
                         shootCycle(),
 
-                        followWithTimeout(pathToPos2, TIMEOUT_PATH_2),
+                        // Path 2: drive to Stack_1 with intake ON and blocker CLOSED.
+                        followCollectWithTimeout(pathToPos2, TIMEOUT_PATH_2),
+
+                        // Path 3: return to shooting position. Intake OFF.
                         followWithTimeout(pathToPos3, TIMEOUT_PATH_3),
 
                         shootCycle(),
 
                         followWithTimeout(pathToPos4, TIMEOUT_PATH_4),
 
-                        // Stack collection path, blocker closed.
+                        // Stack_2 collection path, blocker closed.
                         followCollectWithTimeout(pathToPos5, TIMEOUT_PATH_5),
-
-                        // Full 3-second wait at stack/gate collection area.
-                        gateCollectWait(),
 
                         followWithTimeout(pathToPos6, TIMEOUT_PATH_6),
 
                         shootCycle(),
 
-                        // Drive to overflow gate with intake on and blocker closed.
-                        followCollectWithTimeout(pathToPos7, TIMEOUT_PATH_7),
+                        // Drive to overflow gate with intake ON and blocker CLOSED.
+                        followWithTimeout(pathToPos7, TIMEOUT_PATH_7),
 
-                        // Important improvement:
                         // Wait at the overflow gate before returning to shoot.
                         gateCollectWait(),
 
@@ -304,6 +304,8 @@ public class newBlueSideClose extends OpMode {
         telemetry.addData("Outtake Enabled", outtakeEnabled);
         telemetry.addData("TPS Timeout Fired", tpsTimeoutFired);
         telemetry.addData("Regression", "ON");
+        telemetry.addData("Path 1 Intake", "OFF");
+        telemetry.addData("Path 2 Intake", "ON");
         telemetry.addData("Gate Collect Seconds", "%.1f", GATE_COLLECT_SECONDS);
 
         telemetry.addLine("Velocity Estimate");
