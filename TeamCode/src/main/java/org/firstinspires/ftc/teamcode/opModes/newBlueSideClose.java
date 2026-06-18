@@ -42,12 +42,11 @@ public class newBlueSideClose extends OpMode {
     // ─────────────────────────────────────────────────────────────────────────
     // Goal target
     //
-    // These values are the single source of truth for:
+    // Regression runs for the whole autonomous run.
+    // These coordinates are used for:
     // - turret target
-    // - shooter regression distance
+    // - shooter TPS regression distance
     // - hood regression distance
-    //
-    // Field coordinates are in inches.
     // ─────────────────────────────────────────────────────────────────────────
 
     public static double GOAL_X = 6.0;
@@ -56,10 +55,9 @@ public class newBlueSideClose extends OpMode {
     // ─────────────────────────────────────────────────────────────────────────
     // Shooting and collection timing
     //
-    // Tuning notes:
-    // - Increase SHOOT_SETTLE_SECONDS if the first shot is weak.
-    // - Increase SHOOT_FEED_SECONDS if not all balls feed.
-    // - GATE_COLLECT_SECONDS now set to 3 seconds as requested.
+    // GATE_COLLECT_SECONDS:
+    // - used for stack/gate collection waits.
+    // - now used at the overflow gate after pathToPos7.
     // ─────────────────────────────────────────────────────────────────────────
 
     public static double SHOOT_SETTLE_SECONDS = 0.35;
@@ -69,9 +67,11 @@ public class newBlueSideClose extends OpMode {
     // ─────────────────────────────────────────────────────────────────────────
     // Intake powers
     //
-    // Shooting feed power can be gentler than collection if balls jam or bounce.
-    // Collection keeps the blocker closed.
-    // Shooting opens/releases the blocker.
+    // Collection:
+    // - blocker closed
+    //
+    // Shooting:
+    // - blocker released
     // ─────────────────────────────────────────────────────────────────────────
 
     public static double SHOOT_INTAKE_LEFT_POWER = 1.0;
@@ -82,10 +82,6 @@ public class newBlueSideClose extends OpMode {
 
     // ─────────────────────────────────────────────────────────────────────────
     // Path timeouts
-    //
-    // Tuning notes:
-    // - Reduce if auto waits too long after paths.
-    // - Increase if paths are being cut short before the robot reaches position.
     // ─────────────────────────────────────────────────────────────────────────
 
     public static double TIMEOUT_PATH_1 = 4.0;
@@ -101,15 +97,7 @@ public class newBlueSideClose extends OpMode {
     // ─────────────────────────────────────────────────────────────────────────
     // Shooter readiness
     //
-    // TPS_READY_THRESHOLD:
-    // - 0.95 means shooter is ready at 95% of target TPS.
-    //
-    // Example:
-    // - 1500 TPS target × 0.95 = 1425 TPS ready threshold.
-    //
-    // TPS_SPINUP_TIMEOUT:
-    // - If the shooter has not reached speed in this time, auto feeds anyway.
-    // - This prevents the auto getting stuck forever.
+    // If shooter does not reach speed before timeout, auto feeds anyway.
     // ─────────────────────────────────────────────────────────────────────────
 
     public static double TPS_SPINUP_TIMEOUT = 2.0;
@@ -122,16 +110,7 @@ public class newBlueSideClose extends OpMode {
     // ─────────────────────────────────────────────────────────────────────────
     // Velocity estimation
     //
-    // Your follower.getVelocity() returns a primitive double, so this autonomous
-    // estimates field X/Y velocity from pose change each loop.
-    //
-    // Since Pedro pose X/Y are field coordinates in inches, this gives estimated
-    // field-relative velocity in inches/sec.
-    //
-    // VELOCITY_SMOOTHING_ALPHA:
-    // - 1.0 = no smoothing.
-    // - lower = smoother but more lag.
-    // - 0.35 is a reasonable starting point.
+    // Uses pose delta because this Pedro version does not return X/Y velocity.
     // ─────────────────────────────────────────────────────────────────────────
 
     public static boolean USE_POSE_DELTA_VELOCITY = true;
@@ -195,7 +174,6 @@ public class newBlueSideClose extends OpMode {
         outtake.init(hardwareMap);
         intake.init(hardwareMap);
 
-        // Uses follower angular velocity for optional angular compensation in Turret.
         turret.init(hardwareMap, follower::getAngularVelocity);
 
         updateGoalTarget();
@@ -212,8 +190,10 @@ public class newBlueSideClose extends OpMode {
         telemetry.addLine("Blue Side Close Comp initialised");
         telemetry.addData("Goal X", "%.2f", GOAL_X);
         telemetry.addData("Goal Y", "%.2f", GOAL_Y);
-        telemetry.addData("Regression", "ON FOR WHOLE AUTO");
-        telemetry.addData("Gate Collect Seconds", "%.2f", GATE_COLLECT_SECONDS);
+        telemetry.addData("Regression", "ON for whole auto");
+        telemetry.addData("Gate Collect Seconds", "%.1f", GATE_COLLECT_SECONDS);
+        telemetry.addData("Path 1 Intake", "ON");
+        telemetry.addData("Overflow Gate Wait", "ON after path 7");
         telemetry.addData("Turret Forward Servo", "%.3f", Turret.FORWARD_SERVO);
         telemetry.update();
     }
@@ -225,20 +205,16 @@ public class newBlueSideClose extends OpMode {
         Pose currentPose = follower.getPose();
         PoseStorage.currentPose = currentPose;
 
-        double distCM = distanceToGoalCM();
-
-        updateShooterTarget(distCM);
-        robotHardware.linearHoodRegression(distCM);
+        updateShooterRegressionAndPIDF();
 
         telemetry.addLine("Blue Side Close Comp init loop");
 
         telemetry.addLine("Goal / Distance");
         telemetry.addData("Goal X", "%.2f", GOAL_X);
         telemetry.addData("Goal Y", "%.2f", GOAL_Y);
-        telemetry.addData("Distance CM", "%.1f", distCM);
+        telemetry.addData("Distance CM", "%.1f", distanceToGoalCM());
 
         telemetry.addLine("Shooter Regression");
-        telemetry.addData("Regression", "ON");
         telemetry.addData("Regression Slope", "%.4f", Outtake.regressionSlope);
         telemetry.addData("Regression Intercept", "%.1f", Outtake.regressionIntercept);
         telemetry.addData("Target TPS", "%.0f", Outtake.target);
@@ -250,7 +226,7 @@ public class newBlueSideClose extends OpMode {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // Start command schedule
+    // Start
     // ─────────────────────────────────────────────────────────────────────────
 
     @Override
@@ -272,35 +248,47 @@ public class newBlueSideClose extends OpMode {
 
         stopIntakeAndBlock();
 
+        updateShooterRegressionAndPIDF();
+
         schedule(
                 infinite(this::robotPeriodic),
 
                 sequential(
-                        // Path 1 now runs intake while driving.
+                        // Path 1 now collects while driving, blocker closed.
                         followCollectWithTimeout(pathToPos1, TIMEOUT_PATH_1),
 
                         shootCycle(),
 
                         followWithTimeout(pathToPos2, TIMEOUT_PATH_2),
                         followWithTimeout(pathToPos3, TIMEOUT_PATH_3),
+
                         shootCycle(),
 
                         followWithTimeout(pathToPos4, TIMEOUT_PATH_4),
 
-                        // Stack collection path uses intake with blocker closed.
+                        // Stack collection path, blocker closed.
                         followCollectWithTimeout(pathToPos5, TIMEOUT_PATH_5),
 
-                        // Gate collect now waits for 3 seconds and keeps blocker closed.
+                        // Full 3-second wait at stack/gate collection area.
                         gateCollectWait(),
 
                         followWithTimeout(pathToPos6, TIMEOUT_PATH_6),
+
                         shootCycle(),
 
-                        followWithTimeout(pathToPos7, TIMEOUT_PATH_7),
+                        // Drive to overflow gate with intake on and blocker closed.
+                        followCollectWithTimeout(pathToPos7, TIMEOUT_PATH_7),
+
+                        // Important improvement:
+                        // Wait at the overflow gate before returning to shoot.
+                        gateCollectWait(),
+
                         followWithTimeout(pathToPos8, TIMEOUT_PATH_8),
+
                         shootCycle(),
 
                         followWithTimeout(pathToPos9, TIMEOUT_PATH_9),
+
                         instant(this::finishAuto)
                 )
         );
@@ -315,7 +303,8 @@ public class newBlueSideClose extends OpMode {
         telemetry.addLine("Auto State");
         telemetry.addData("Outtake Enabled", outtakeEnabled);
         telemetry.addData("TPS Timeout Fired", tpsTimeoutFired);
-        telemetry.addData("Gate Collect Seconds", "%.2f", GATE_COLLECT_SECONDS);
+        telemetry.addData("Regression", "ON");
+        telemetry.addData("Gate Collect Seconds", "%.1f", GATE_COLLECT_SECONDS);
 
         telemetry.addLine("Velocity Estimate");
         telemetry.addData("Raw Velocity X", "%.2f", rawVelocityX);
@@ -335,11 +324,8 @@ public class newBlueSideClose extends OpMode {
         telemetry.addData("Comp Target Y", "%.2f", Turret.compensatedTargetY);
 
         telemetry.addLine("Shooter Regression");
-        telemetry.addData("Regression", "ON");
         telemetry.addData("Regression Slope", "%.4f", Outtake.regressionSlope);
         telemetry.addData("Regression Intercept", "%.1f", Outtake.regressionIntercept);
-
-        telemetry.addLine("Shooter");
         telemetry.addData("Target TPS", "%.0f", Outtake.target);
         telemetry.addData("Current TPS", "%.0f", Outtake.currentTPS);
         telemetry.addData("Left TPS", "%.0f", Outtake.leftVelocity);
@@ -460,11 +446,19 @@ public class newBlueSideClose extends OpMode {
 
     private Command gateCollectWait() {
         return sequential(
-                race(
-                        waitSeconds(GATE_COLLECT_SECONDS),
-                        infinite(this::runGateCollect)
-                ),
-                instant(this::stopIntakeAndBlock)
+                instant(() -> {
+                    updateShooterRegressionAndPIDF();
+                    robotHardware.block();
+                    intake.intake(COLLECT_INTAKE_LEFT_POWER, COLLECT_INTAKE_RIGHT_POWER);
+                }),
+
+                waitSeconds(GATE_COLLECT_SECONDS),
+
+                instant(() -> {
+                    updateShooterRegressionAndPIDF();
+                    intake.intakeStop();
+                    robotHardware.block();
+                })
         );
     }
 
@@ -472,17 +466,21 @@ public class newBlueSideClose extends OpMode {
         return sequential(
                 instant(() -> {
                     startTpsWait();
+
+                    outtakeEnabled = true;
+                    updateShooterRegressionAndPIDF();
+
                     stopIntakeAndBlock();
                 }),
 
                 race(
                         waitUntil(this::shooterReadyOrTimedOut),
-                        infinite(this::stopIntakeAndBlock)
+                        infinite(this::holdShooterAndBlock)
                 ),
 
                 race(
                         waitSeconds(SHOOT_SETTLE_SECONDS),
-                        infinite(this::stopIntakeAndBlock)
+                        infinite(this::holdShooterAndBlock)
                 ),
 
                 race(
@@ -497,18 +495,7 @@ public class newBlueSideClose extends OpMode {
     // ─────────────────────────────────────────────────────────────────────────
     // Continuous robot update
     //
-    // Keeps:
-    // - Pedro updated
-    // - pose stored
-    // - velocity estimated
-    // - turret aiming
-    // - shooter regression active
-    // - Outtake PIDF running
-    // - hood regression active
-    //
-    // Important:
-    // Regression is intentionally ON for the whole auto.
-    // There is no static TPS fallback in this file.
+    // Regression runs continuously while outtakeEnabled is true.
     // ─────────────────────────────────────────────────────────────────────────
 
     private void robotPeriodic() {
@@ -527,16 +514,12 @@ public class newBlueSideClose extends OpMode {
                 estimatedVelocityY
         );
 
-        double distCM = distanceToGoalCM();
-
         if (outtakeEnabled) {
-            updateShooterTarget(distCM);
-            robotHardware.linearHoodRegression(distCM);
+            updateShooterRegressionAndPIDF();
         } else {
             outtake.stopOuttake();
+            outtake.updatePIDF();
         }
-
-        outtake.updatePIDF();
     }
 
     private void finishAuto() {
@@ -553,17 +536,23 @@ public class newBlueSideClose extends OpMode {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // Shooter target helper
+    // Shooter update helper
     //
-    // Regression is ON for the whole auto.
-    //
-    // target TPS = regressionSlope × distanceCM + regressionIntercept
-    //
-    // The actual min/max clipping happens inside Outtake.setTargetTPS().
+    // This keeps regression alive during:
+    // - paths
+    // - shooter spin-up
+    // - shooter settle
+    // - feed
+    // - collection waits
     // ─────────────────────────────────────────────────────────────────────────
 
-    private void updateShooterTarget(double distCM) {
+    private void updateShooterRegressionAndPIDF() {
+        double distCM = distanceToGoalCM();
+
         outtake.linearRegression(distCM);
+        robotHardware.linearHoodRegression(distCM);
+
+        outtake.updatePIDF();
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -584,6 +573,8 @@ public class newBlueSideClose extends OpMode {
     }
 
     private boolean shooterReadyOrTimedOut() {
+        updateShooterRegressionAndPIDF();
+
         if (isShooterAtSpeed()) {
             return true;
         }
@@ -599,19 +590,13 @@ public class newBlueSideClose extends OpMode {
     // ─────────────────────────────────────────────────────────────────────────
     // Intake and gate helpers
     //
-    // stopIntakeAndBlock:
-    // - intake off
+    // Collection:
     // - blocker closed
+    // - intake on
     //
-    // runShootFeed:
+    // Shooting:
     // - blocker released
-    // - intake feeds balls into shooter
-    //
-    // runGateCollect:
-    // - blocker closed
-    // - intake collects balls
-    //
-    // This prevents gate collection from accidentally shooting.
+    // - intake on
     // ─────────────────────────────────────────────────────────────────────────
 
     private void stopIntakeAndBlock() {
@@ -619,24 +604,29 @@ public class newBlueSideClose extends OpMode {
         robotHardware.block();
     }
 
+    private void holdShooterAndBlock() {
+        updateShooterRegressionAndPIDF();
+
+        intake.intakeStop();
+        robotHardware.block();
+    }
+
     private void runShootFeed() {
+        updateShooterRegressionAndPIDF();
+
         robotHardware.release();
         intake.intake(SHOOT_INTAKE_LEFT_POWER, SHOOT_INTAKE_RIGHT_POWER);
     }
 
     private void runGateCollect() {
+        updateShooterRegressionAndPIDF();
+
         robotHardware.block();
         intake.intake(COLLECT_INTAKE_LEFT_POWER, COLLECT_INTAKE_RIGHT_POWER);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
     // Velocity estimation
-    //
-    // Uses pose delta:
-    // velocity = change in field position / change in time
-    //
-    // This avoids follower.getVelocity(), because your current Follower version
-    // returns a primitive double instead of X/Y velocity.
     // ─────────────────────────────────────────────────────────────────────────
 
     private void resetVelocityEstimator(Pose pose) {
