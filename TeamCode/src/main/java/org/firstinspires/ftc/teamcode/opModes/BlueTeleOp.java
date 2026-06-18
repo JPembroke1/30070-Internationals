@@ -116,8 +116,8 @@ public class BlueTeleOp extends OpMode {
 
     public static double SHOOT_TRIGGER_THRESHOLD = 0.2;
 
-    public static double SHOOT_INTAKE_LEFT_POWER = 0.7;
-    public static double SHOOT_INTAKE_RIGHT_POWER = 0.9;
+    public static double SHOOT_INTAKE_LEFT_POWER = 0.5;
+    public static double SHOOT_INTAKE_RIGHT_POWER = 0.5;
 
     public static double COLLECT_INTAKE_LEFT_POWER = 1.0;
     public static double COLLECT_INTAKE_RIGHT_POWER = 1.0;
