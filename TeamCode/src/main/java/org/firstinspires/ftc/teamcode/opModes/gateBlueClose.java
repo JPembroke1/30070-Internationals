@@ -43,8 +43,8 @@ public class gateBlueClose extends OpMode {
     public static double GOAL_X = 6.0;
     public static double GOAL_Y = 138.0;
 
-    public static double SHOOT_SETTLE_SECONDS = 0.5;
-    public static double SHOOT_FEED_SECONDS = 1.0;
+    public static double SHOOT_SETTLE_SECONDS = 0.3;
+    public static double SHOOT_FEED_SECONDS = 0.3;
     public static double GATE_COLLECT_SECONDS = 2.0;
 
     public static double SHOOT_INTAKE_LEFT_POWER = 1.0;
@@ -53,18 +53,18 @@ public class gateBlueClose extends OpMode {
     public static double COLLECT_INTAKE_LEFT_POWER = 1.0;
     public static double COLLECT_INTAKE_RIGHT_POWER = 1.0;
 
-    public static double TIMEOUT_PATH_1 = 2.0;
-    public static double TIMEOUT_PATH_2 = 3.0;
-    public static double TIMEOUT_PATH_3 = 3.0;
-    public static double TIMEOUT_PATH_4 = 3.0;
-    public static double TIMEOUT_PATH_5 = 2.0;
-    public static double TIMEOUT_PATH_6 = 2.0;
-    public static double TIMEOUT_PATH_7 = 2.0;
-    public static double TIMEOUT_PATH_8 = 2.0;
-    public static double TIMEOUT_PATH_9 = 2.0;
-    public static double TIMEOUT_PATH_10 = 3.0;
+    public static double TIMEOUT_PATH_1 = 1.0;
+    public static double TIMEOUT_PATH_2 = 1.0;
+    public static double TIMEOUT_PATH_3 = 1.0;
+    public static double TIMEOUT_PATH_4 = 1.0;
+    public static double TIMEOUT_PATH_5 = 1.0;
+    public static double TIMEOUT_PATH_6 = 1.0;
+    public static double TIMEOUT_PATH_7 = 1.0;
+    public static double TIMEOUT_PATH_8 = 1.0;
+    public static double TIMEOUT_PATH_9 = 1.0;
+    public static double TIMEOUT_PATH_10 = 1.0;
 
-    public static double TPS_SPINUP_TIMEOUT = 1.0;
+    public static double TPS_SPINUP_TIMEOUT = 0.5;
     public static double TPS_READY_THRESHOLD = 0.95;
 
     private double tpsWaitStartTime = 0.0;
@@ -94,7 +94,7 @@ public class gateBlueClose extends OpMode {
     private final Pose stack2Pose = new Pose(40, 60, Math.toRadians(180));
     private final Pose eatStack2Pose = new Pose(15, 60, Math.toRadians(180));
 
-    private final Pose overflowPose = new Pose(15, 58, Math.toRadians(145));
+    private final Pose overflowPose = new Pose(10, 58, Math.toRadians(145));
     private final Pose endPose = new Pose(59, 101, Math.toRadians(145));
 
     private PathChain pathToShoot;
@@ -256,8 +256,6 @@ public class gateBlueClose extends OpMode {
         telemetry.addData("Target TPS", "%.0f", Outtake.target);
         telemetry.addData("Current TPS", "%.0f", Outtake.currentTPS);
         telemetry.addData("Effective TPS", "%.0f", Outtake.effectiveTPS);
-        telemetry.addData("Output", "%.3f", Outtake.lastOutput);
-        telemetry.addData("Error", "%.0f", Outtake.lastError);
 
         telemetry.addLine("Velocity");
         telemetry.addData("Raw X", "%.2f", rawVelocityX);

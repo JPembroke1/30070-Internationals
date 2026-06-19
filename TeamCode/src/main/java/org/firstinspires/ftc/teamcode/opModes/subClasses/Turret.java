@@ -62,7 +62,7 @@ public class Turret {
     // - AIM_GAIN should be used carefully because it changes the whole angle map.
     // ─────────────────────────────────────────────────────────────────────────
 
-    public static double AIM_OFFSET = -0.08;
+    public static double AIM_OFFSET = -0.0;
     public static double AIM_GAIN = 1.0;
 
     // ─────────────────────────────────────────────────────────────────────────

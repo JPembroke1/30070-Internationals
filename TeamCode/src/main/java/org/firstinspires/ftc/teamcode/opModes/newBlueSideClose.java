@@ -314,9 +314,6 @@ public class newBlueSideClose extends OpMode {
         telemetry.addData("Target TPS", "%.0f", Outtake.target);
         telemetry.addData("Current TPS", "%.0f", Outtake.currentTPS);
         telemetry.addData("Effective TPS", "%.0f", Outtake.effectiveTPS);
-        telemetry.addData("Output", "%.3f", Outtake.lastOutput);
-        telemetry.addData("Error", "%.0f", Outtake.lastError);
-
         telemetry.addLine("Turret");
         telemetry.addData("Velocity Comp", Turret.velocityCompensationActive);
         telemetry.addData("Aim Offset", "%.4f", Turret.AIM_OFFSET);
