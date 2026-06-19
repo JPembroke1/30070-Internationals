@@ -43,12 +43,12 @@ public class gateBlueClose extends OpMode {
     public static double GOAL_X = 6.0;
     public static double GOAL_Y = 138.0;
 
-    public static double SHOOT_SETTLE_SECONDS = 0.3;
-    public static double SHOOT_FEED_SECONDS = 0.3;
-    public static double GATE_COLLECT_SECONDS = 2.0;
+    public static double SHOOT_SETTLE_SECONDS = 0.6;
+    public static double SHOOT_FEED_SECONDS = 0.5;
+    public static double GATE_COLLECT_SECONDS = 3.0;
 
-    public static double SHOOT_INTAKE_LEFT_POWER = 1.0;
-    public static double SHOOT_INTAKE_RIGHT_POWER = 1.0;
+    public static double SHOOT_INTAKE_LEFT_POWER = 0.5;
+    public static double SHOOT_INTAKE_RIGHT_POWER = 0.5;
 
     public static double COLLECT_INTAKE_LEFT_POWER = 1.0;
     public static double COLLECT_INTAKE_RIGHT_POWER = 1.0;
@@ -91,10 +91,10 @@ public class gateBlueClose extends OpMode {
 
     private final Pose stack1Pose = new Pose(13, 86, Math.toRadians(180));
 
-    private final Pose stack2Pose = new Pose(40, 60, Math.toRadians(180));
-    private final Pose eatStack2Pose = new Pose(15, 60, Math.toRadians(180));
+    private final Pose stack2Pose = new Pose(40, 62, Math.toRadians(180));
+    private final Pose eatStack2Pose = new Pose(15, 62, Math.toRadians(180));
 
-    private final Pose overflowPose = new Pose(10, 58, Math.toRadians(145));
+    private final Pose overflowPose = new Pose(11, 60, Math.toRadians(138));
     private final Pose endPose = new Pose(59, 101, Math.toRadians(145));
 
     private PathChain pathToShoot;
@@ -161,7 +161,6 @@ public class gateBlueClose extends OpMode {
 
         currentDistanceCM = distanceToGoalCM(currentPose);
 
-        updateShooterRegressionAndPIDF(currentPose);
 
         telemetry.addLine("Gate Blue Init Loop");
         telemetry.addData("Alliance Stored", PoseStorage.lastAlliance);
