@@ -31,7 +31,7 @@ import static com.pedropathing.ivy.groups.Groups.sequential;
 import static com.pedropathing.ivy.pedro.PedroCommands.follow;
 
 @Configurable
-@Autonomous(name = "Gate Auto 15 Blue", group = "Blue")
+@Autonomous(name = "00 Gate Auto 15 Blue", group = "Blue")
 public class GateAuto15Blue extends OpMode {
 
     private Follower follower;

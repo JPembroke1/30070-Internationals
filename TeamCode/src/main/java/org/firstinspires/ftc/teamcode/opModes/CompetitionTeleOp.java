@@ -17,7 +17,7 @@ import java.util.List;
 import java.util.Locale;
 
 @Configurable
-@TeleOp(name = "Competition TeleOp", group = "TeleOp")
+@TeleOp(name = "00 - Competition TeleOp", group = "Competition")
 public class CompetitionTeleOp extends OpMode {
 
     private Follower follower;
