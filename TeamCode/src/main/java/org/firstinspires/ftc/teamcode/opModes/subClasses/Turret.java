@@ -13,53 +13,24 @@ public class Turret {
     // ─────────────────────────────────────────────────────────────────────────
 
     private Servo turretServo;
+    private LimelightAssist limelightAssist;
 
     public static String TURRET_SERVO_NAME = "turret";
 
     // ─────────────────────────────────────────────────────────────────────────
     // Mechanical Servo Calibration
-    //
-    // These are the real safe servo limits for your physical turret.
-    //
-    // LEFT_SERVO_LIMIT:
-    // - servo position when turret is safely at -90°
-    //
-    // RIGHT_SERVO_LIMIT:
-    // - servo position when turret is safely at +90°
-    //
-    // Do not assume 0.0 and 1.0 are always safe on the real robot.
-    // Start conservative if the turret can hit the frame.
     // ─────────────────────────────────────────────────────────────────────────
 
     public static double LEFT_SERVO_LIMIT = 0.0;
     public static double RIGHT_SERVO_LIMIT = 1.0;
 
-    // If the turret moves the wrong way, change this to true.
     public static boolean SERVO_REVERSED = false;
 
     // ─────────────────────────────────────────────────────────────────────────
     // Aim Tuning
     //
-    // AIM_OFFSET:
-    // - final trim added after all turret maths
-    // - adjusted live in TeleOp using gamepad2 dpad left/right
-    //
-    // AIM_GAIN:
-    // - scales the robot-relative angle before converting to servo position
-    //
-    // Recommended:
-    // - leave AIM_GAIN at 1.0 unless the turret consistently under-rotates
-    //   or over-rotates across the whole range.
-    //
-    // If turret under-aims:
-    // - increase AIM_GAIN slightly, for example 1.02
-    //
-    // If turret over-aims:
-    // - decrease AIM_GAIN slightly, for example 0.98
-    //
-    // Confidence:
-    // - AIM_OFFSET is high-confidence for small final shot trim.
-    // - AIM_GAIN should be used carefully because it changes the whole angle map.
+    // AIM_OFFSET is still a servo-position trim.
+    // Do not treat AIM_OFFSET as degrees or radians.
     // ─────────────────────────────────────────────────────────────────────────
 
     public static double AIM_OFFSET = -0.0;
@@ -67,16 +38,10 @@ public class Turret {
 
     // ─────────────────────────────────────────────────────────────────────────
     // Turret Angle Limits
-    //
-    // This locks the maths to a 180° turret:
-    //
-    // -90° = left limit
-    //   0° = forward
-    // +90° = right limit
     // ─────────────────────────────────────────────────────────────────────────
 
     private static final double MIN_TURRET_ANGLE = -Math.PI / 2.0;
-    private static final double MAX_TURRET_ANGLE =  Math.PI / 2.0;
+    private static final double MAX_TURRET_ANGLE = Math.PI / 2.0;
 
     // ─────────────────────────────────────────────────────────────────────────
     // Target
@@ -86,21 +51,63 @@ public class Turret {
 
     // ─────────────────────────────────────────────────────────────────────────
     // Velocity Compensation
-    //
-    // velocityCompensationActive:
-    // - true = aim slightly ahead based on robot field velocity
-    // - false = aim directly at target
-    //
-    // VELOCITY_LEAD_GAIN:
-    // - how strongly robot velocity affects turret aim
-    //
-    // Start low.
-    // If shots miss behind while moving, increase slightly.
-    // If shots miss ahead while moving, decrease slightly.
     // ─────────────────────────────────────────────────────────────────────────
 
     public static boolean velocityCompensationActive = true;
     public static double VELOCITY_LEAD_GAIN = 0.01;
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Limelight Assist
+    //
+    // Default is OFF.
+    //
+    // Enable both:
+    // Turret.USE_LIMELIGHT_ASSIST = true;
+    // LimelightAssist.LIMELIGHT_ENABLED = true;
+    //
+    // If correction moves the wrong way:
+    // LimelightAssist.CORRECTION_DIRECTION = -1.0;
+    // ─────────────────────────────────────────────────────────────────────────
+
+    public static boolean USE_LIMELIGHT_ASSIST = false;
+
+    public static boolean UPDATE_LIMELIGHT_INSIDE_TURRET = true;
+    public static boolean REQUIRE_LIMELIGHT_TARGET = true;
+    public static boolean DISABLE_LIMELIGHT_WHEN_LOCKED = false;
+
+    public static double LIMELIGHT_CORRECTION_GAIN = 1.0;
+    public static double MAX_LIMELIGHT_CORRECTION_RAD = Math.toRadians(5.0);
+
+    public static double VISION_SMOOTHING_ALPHA = 0.35;
+    public static double MAX_VISION_STEP_RAD = Math.toRadians(1.5);
+
+    public static boolean limelightAssistActive = false;
+    public static boolean limelightTargetVisible = false;
+    public static boolean limelightLocked = false;
+
+    public static double lastLimelightTx = 0.0;
+    public static double lastRawLimelightCorrectionDeg = 0.0;
+    public static double lastAppliedLimelightCorrectionDeg = 0.0;
+
+    private double previousVisionCorrectionRad = 0.0;
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Diagnostics
+    // ─────────────────────────────────────────────────────────────────────────
+
+    public static double lastRobotX = 0.0;
+    public static double lastRobotY = 0.0;
+    public static double lastRobotHeadingDeg = 0.0;
+
+    public static double lastTargetX = 0.0;
+    public static double lastTargetY = 0.0;
+
+    public static double lastFieldTargetAngleDeg = 0.0;
+    public static double lastRelativeAngleDeg = 0.0;
+    public static double lastVelocityLeadX = 0.0;
+    public static double lastVelocityLeadY = 0.0;
+    public static double lastFinalAngleDeg = 0.0;
+    public static double lastServoPosition = 0.0;
 
     // ─────────────────────────────────────────────────────────────────────────
     // Init
@@ -108,6 +115,11 @@ public class Turret {
 
     public void init(HardwareMap hardwareMap) {
         turretServo = hardwareMap.get(Servo.class, TURRET_SERVO_NAME);
+
+        limelightAssist = new LimelightAssist();
+        limelightAssist.init(hardwareMap);
+        limelightAssist.setEnabled(USE_LIMELIGHT_ASSIST && LimelightAssist.LIMELIGHT_ENABLED);
+
         setForward();
     }
 
@@ -121,6 +133,38 @@ public class Turret {
         }
     }
 
+    public LimelightAssist getLimelightAssist() {
+        return limelightAssist;
+    }
+
+    public void setLimelightAssistEnabled(boolean enabled) {
+        USE_LIMELIGHT_ASSIST = enabled;
+
+        if (limelightAssist != null) {
+            limelightAssist.setEnabled(enabled);
+        }
+
+        if (!enabled) {
+            resetVisionCorrection();
+        }
+    }
+
+    public void toggleLimelightAssist() {
+        setLimelightAssistEnabled(!USE_LIMELIGHT_ASSIST);
+    }
+
+    public void updateLimelightOnly() {
+        if (limelightAssist != null) {
+            limelightAssist.update();
+        }
+    }
+
+    public void stopLimelight() {
+        if (limelightAssist != null) {
+            limelightAssist.stop();
+        }
+    }
+
     // ─────────────────────────────────────────────────────────────────────────
     // Aim Turret
     //
@@ -130,18 +174,23 @@ public class Turret {
     // 3. Convert field angle to robot-relative angle
     // 4. Normalise to -π to +π
     // 5. Apply AIM_GAIN
-    // 6. Clamp to -90° to +90°
-    // 7. Convert angle to 0.0 to 1.0 normalised position
-    // 8. Apply servo reversal if needed
-    // 9. Map to calibrated servo limits
-    // 10. Apply AIM_OFFSET
-    // 11. Clamp to calibrated servo limits
+    // 6. Add optional Limelight angular correction
+    // 7. Clamp to -90° to +90°
+    // 8. Convert angle to 0.0 to 1.0 normalised position
+    // 9. Apply servo reversal if needed
+    // 10. Map to calibrated servo limits
+    // 11. Apply AIM_OFFSET as servo-position trim
+    // 12. Clamp to calibrated servo limits
     // ─────────────────────────────────────────────────────────────────────────
 
     public void aimTurret(Pose robotPose, double vx, double vy) {
 
         if (robotPose == null || turretServo == null) {
             return;
+        }
+
+        if (UPDATE_LIMELIGHT_INSIDE_TURRET && limelightAssist != null) {
+            limelightAssist.update();
         }
 
         double dx = targetPose.getX() - robotPose.getX();
@@ -157,6 +206,10 @@ public class Turret {
         relativeAngle = normaliseRadians(relativeAngle);
 
         relativeAngle *= AIM_GAIN;
+
+        double limelightCorrectionRad = calculateLimelightCorrectionRad();
+
+        relativeAngle += limelightCorrectionRad;
 
         relativeAngle = clamp(
                 relativeAngle,
@@ -177,13 +230,109 @@ public class Turret {
         servoPosition = clampToServoLimits(servoPosition);
 
         turretServo.setPosition(servoPosition);
+
+        lastRobotX = robotPose.getX();
+        lastRobotY = robotPose.getY();
+        lastRobotHeadingDeg = Math.toDegrees(robotPose.getHeading());
+
+        lastTargetX = targetPose.getX();
+        lastTargetY = targetPose.getY();
+
+        lastVelocityLeadX = leadX;
+        lastVelocityLeadY = leadY;
+
+        lastFieldTargetAngleDeg = Math.toDegrees(targetAngle);
+        lastRelativeAngleDeg = Math.toDegrees(relativeAngle);
+        lastFinalAngleDeg = Math.toDegrees(relativeAngle);
+        lastServoPosition = servoPosition;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Limelight Correction
+    // ─────────────────────────────────────────────────────────────────────────
+
+    private double calculateLimelightCorrectionRad() {
+        limelightTargetVisible = false;
+        limelightLocked = false;
+
+        if (!USE_LIMELIGHT_ASSIST || limelightAssist == null) {
+            limelightAssistActive = false;
+            resetVisionCorrection();
+            return 0.0;
+        }
+
+        limelightTargetVisible = limelightAssist.hasTarget();
+        limelightLocked = limelightAssist.isVisionLocked();
+        lastLimelightTx = limelightAssist.getTx();
+
+        if (REQUIRE_LIMELIGHT_TARGET && !limelightTargetVisible) {
+            limelightAssistActive = false;
+            resetVisionCorrection();
+            return 0.0;
+        }
+
+        if (DISABLE_LIMELIGHT_WHEN_LOCKED && limelightLocked) {
+            limelightAssistActive = false;
+            resetVisionCorrection();
+            return 0.0;
+        }
+
+        double rawCorrectionRad =
+                limelightAssist.getTurretCorrectionRadians()
+                        * LIMELIGHT_CORRECTION_GAIN;
+
+        rawCorrectionRad = clamp(
+                rawCorrectionRad,
+                -MAX_LIMELIGHT_CORRECTION_RAD,
+                MAX_LIMELIGHT_CORRECTION_RAD
+        );
+
+        lastRawLimelightCorrectionDeg = Math.toDegrees(rawCorrectionRad);
+
+        double alpha = clamp(VISION_SMOOTHING_ALPHA, 0.0, 1.0);
+
+        double smoothedCorrectionRad =
+                (alpha * rawCorrectionRad)
+                        + ((1.0 - alpha) * previousVisionCorrectionRad);
+
+        double stepRad = smoothedCorrectionRad - previousVisionCorrectionRad;
+
+        stepRad = clamp(
+                stepRad,
+                -MAX_VISION_STEP_RAD,
+                MAX_VISION_STEP_RAD
+        );
+
+        double appliedCorrectionRad = previousVisionCorrectionRad + stepRad;
+
+        appliedCorrectionRad = clamp(
+                appliedCorrectionRad,
+                -MAX_LIMELIGHT_CORRECTION_RAD,
+                MAX_LIMELIGHT_CORRECTION_RAD
+        );
+
+        previousVisionCorrectionRad = appliedCorrectionRad;
+
+        lastAppliedLimelightCorrectionDeg = Math.toDegrees(appliedCorrectionRad);
+        limelightAssistActive = true;
+
+        return appliedCorrectionRad;
+    }
+
+    private void resetVisionCorrection() {
+        previousVisionCorrectionRad = 0.0;
+
+        limelightAssistActive = false;
+        limelightTargetVisible = false;
+        limelightLocked = false;
+
+        lastLimelightTx = 0.0;
+        lastRawLimelightCorrectionDeg = 0.0;
+        lastAppliedLimelightCorrectionDeg = 0.0;
     }
 
     // ─────────────────────────────────────────────────────────────────────────
     // Forward Position
-    //
-    // Forward is the centre between the calibrated servo limits.
-    // This should point the turret straight ahead if the horn/linkage is centred.
     // ─────────────────────────────────────────────────────────────────────────
 
     public void setForward() {
@@ -191,7 +340,9 @@ public class Turret {
             return;
         }
 
+        resetVisionCorrection();
         turretServo.setPosition(getCalibratedCentrePosition());
+        lastServoPosition = getCalibratedCentrePosition();
     }
 
     // ─────────────────────────────────────────────────────────────────────────
