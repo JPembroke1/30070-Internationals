@@ -21,6 +21,9 @@ public class Outtake {
     public static double minTargetTPS = 1000.0;
     public static double maxTargetTPS = 1900.0;
 
+    public static double farZoneMinTargetTPS = 1000.0;
+    public static double farZoneMaxTargetTPS = 3500.0;
+
     public static double MAX_REGRESSION_DISTANCE_CM = 200.0;
 
     public static double kV = 0.00039;
@@ -42,22 +45,20 @@ public class Outtake {
     public static double RAMP_UP_PER_SECOND = 2.5;
     public static double RAMP_DOWN_PER_SECOND = 6.0;
 
-    private double appliedPower = 0.0;
-
-
-
     public static double MIN_VALID_TPS = 50.0;
-
     public static double MAX_ERROR_FOR_PID = 500.0;
 
-
     public static double target = 0.0;
+    public static double requestedTarget = 0.0;
     public static double currentTPS = 0.0;
     public static double leftVelocity = 0.0;
     public static double rightVelocity = 0.0;
     public static double effectiveTPS = 0.0;
 
     public static boolean bothSensorsInvalid = false;
+    public static boolean usingFarZoneTarget = false;
+
+    private double appliedPower = 0.0;
 
     private double integral = 0.0;
     private double previousError = 0.0;
@@ -77,7 +78,6 @@ public class Outtake {
         leftShooter.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.FLOAT);
         rightShooter.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.FLOAT);
 
-        // ✅ CRITICAL FIX — DO NOT REMOVE
         leftShooter.setDirection(DcMotorSimple.Direction.FORWARD);
         rightShooter.setDirection(DcMotorSimple.Direction.REVERSE);
 
@@ -88,7 +88,21 @@ public class Outtake {
     public void setTargetTPS(double targetTPS) {
         double previousTarget = target;
 
+        requestedTarget = targetTPS;
         target = clamp(targetTPS, minTargetTPS, maxTargetTPS);
+        usingFarZoneTarget = false;
+
+        if (previousTarget <= 0.0 && target > 0.0) {
+            resetController();
+        }
+    }
+
+    public void setFarZoneTargetTPS(double targetTPS) {
+        double previousTarget = target;
+
+        requestedTarget = targetTPS;
+        target = clamp(targetTPS, farZoneMinTargetTPS, farZoneMaxTargetTPS);
+        usingFarZoneTarget = true;
 
         if (previousTarget <= 0.0 && target > 0.0) {
             resetController();
@@ -105,7 +119,9 @@ public class Outtake {
     }
 
     public void updatePIDF() {
-        if (leftShooter == null || rightShooter == null) return;
+        if (leftShooter == null || rightShooter == null) {
+            return;
+        }
 
         readVelocities();
 
@@ -120,7 +136,6 @@ public class Outtake {
         pidInitialised = true;
 
         double rawError = target - effectiveTPS;
-
         double error = clamp(rawError, -MAX_ERROR_FOR_PID, MAX_ERROR_FOR_PID);
 
         integral += error * dt;
@@ -128,10 +143,12 @@ public class Outtake {
         double derivative = (error - previousError) / dt;
 
         double feedForward = (kV * target) + kS;
-        double requestedOutput = feedForward
-                + (kP * error)
-                + (kI * integral)
-                + (kD * derivative);
+
+        double requestedOutput =
+                feedForward
+                        + (kP * error)
+                        + (kI * integral)
+                        + (kD * derivative);
 
         double powerLimit = calculatePowerLimitFromError(rawError);
 
@@ -147,8 +164,8 @@ public class Outtake {
         double cappedError = clamp(Math.abs(error), 0.0, ERROR_POWER_LIMIT_ERROR_CAP);
 
         double limit =
-                ERROR_POWER_LIMIT_BASE +
-                        (cappedError * ERROR_POWER_LIMIT_GAIN);
+                ERROR_POWER_LIMIT_BASE
+                        + (cappedError * ERROR_POWER_LIMIT_GAIN);
 
         return clamp(limit, ERROR_POWER_LIMIT_MIN, ERROR_POWER_LIMIT_MAX);
     }
@@ -157,12 +174,11 @@ public class Outtake {
         double diff = requested - appliedPower;
 
         double maxStep =
-                (diff > 0)
+                (diff > 0.0)
                         ? RAMP_UP_PER_SECOND * dt
                         : RAMP_DOWN_PER_SECOND * dt;
 
         appliedPower += clamp(diff, -maxStep, maxStep);
-
         appliedPower = clamp(appliedPower, minPower, limit);
 
         setShooterPower(appliedPower);
@@ -175,12 +191,14 @@ public class Outtake {
         effectiveTPS = (leftVelocity + rightVelocity) / 2.0;
         currentTPS = effectiveTPS;
 
-        bothSensorsInvalid = (effectiveTPS < MIN_VALID_TPS);
+        bothSensorsInvalid = effectiveTPS < MIN_VALID_TPS;
     }
 
     public void stopOuttake() {
         target = 0.0;
+        requestedTarget = 0.0;
         appliedPower = 0.0;
+        usingFarZoneTarget = false;
 
         setShooterPower(0.0);
 
@@ -202,8 +220,13 @@ public class Outtake {
     }
 
     public boolean isAtSpeed(double percentOfTarget) {
-        if (target <= 0.0) return false;
-        if (bothSensorsInvalid) return false;
+        if (target <= 0.0) {
+            return false;
+        }
+
+        if (bothSensorsInvalid) {
+            return false;
+        }
 
         return effectiveTPS >= target * percentOfTarget;
     }

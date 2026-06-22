@@ -3,8 +3,6 @@ package org.firstinspires.ftc.teamcode.opModes;
 import com.bylazar.configurables.annotations.Configurable;
 import com.pedropathing.follower.Follower;
 import com.pedropathing.geometry.Pose;
-import com.qualcomm.hardware.limelightvision.LLResult;
-import com.qualcomm.hardware.limelightvision.Limelight3A;
 import com.qualcomm.hardware.lynx.LynxModule;
 import com.qualcomm.robotcore.eventloop.opmode.OpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
@@ -19,58 +17,59 @@ import java.util.List;
 import java.util.Locale;
 
 @Configurable
-@TeleOp(name = "00 - Competition TeleOp", group = "Competition")
-public class CompetitionTeleOp extends OpMode {
+@TeleOp(name = "01 - Far Zone Shooter Tuning", group = "Testing")
+public class FarZoneShooterTuningTeleOp extends OpMode {
+
+    private final Pose startPose = new Pose(56, 8.5, Math.toRadians(180));
 
     private Follower follower;
     private Intake intake;
     private Outtake outtake;
     private Turret turret;
     private RobotHardware robotHardware;
-    private Limelight3A limelight;
 
     private List<LynxModule> allHubs;
 
     public static double BLUE_GOAL_X = 6.0;
     public static double BLUE_GOAL_Y = 138.0;
 
-    public static double RED_GOAL_X = 138.0;
-    public static double RED_GOAL_Y = 138.0;
-
-    public static double BLUE_RESET_X = 24.0;
-    public static double BLUE_RESET_Y = 138.0;
-    public static double BLUE_RESET_HEADING_DEG = 145.0;
-
-    public static double RED_RESET_X = 120.0;
-    public static double RED_RESET_Y = 138.0;
-    public static double RED_RESET_HEADING_DEG = 35.0;
-
     public static double TELEOP_GOAL_X = 6.0;
     public static double TELEOP_GOAL_Y = 138.0;
 
-    public static double TELEOP_RESET_X = 24.0;
-    public static double TELEOP_RESET_Y = 138.0;
-    public static double TELEOP_RESET_HEADING_DEG = 145.0;
+    public static double FAR_ZONE_RESET_X = 56.0;
+    public static double FAR_ZONE_RESET_Y = 8.5;
+    public static double FAR_ZONE_RESET_HEADING_DEG = 180.0;
 
-    public static boolean USE_LIMELIGHT = true;
-    public static int LIMELIGHT_PIPELINE = 0;
-    public static int LIMELIGHT_POLL_RATE_HZ = 100;
+    public static boolean START_IN_AUTO_AIM = true;
 
-    private boolean limelightInitialised = false;
-    private boolean limelightConnected = false;
-    private boolean limelightRunning = false;
-    private boolean limelightHasTarget = false;
+    public static double AIM_OFFSET_STEP = 0.005;
+    public static double AIM_OFFSET_MIN = -0.20;
+    public static double AIM_OFFSET_MAX = 0.20;
 
-    private double limelightTx = 0.0;
-    private double limelightTy = 0.0;
-    private double limelightTa = 0.0;
-    private double limelightPipelineIndex = -1.0;
-    private long limelightMsSinceUpdate = -1;
+    public static double DRIVE_SPEED = 1.0;
+    public static double INTAKE_TURN_MULTIPLIER = 0.45;
+    public static double FEED_DRIVE_MULTIPLIER = 0.50;
 
-    private String limelightLastErrorClass = "None";
-    private String limelightLastErrorMessage = "None";
+    public static double FAR_ZONE_TARGET_TPS = 2760.0;
+    public static double TPS_STEP_SMALL = 25.0;
+    public static double TPS_STEP_LARGE = 100.0;
+    public static double MIN_TARGET_TPS = 0.0;
+    public static double MAX_TARGET_TPS = 4000.0;
 
-    private String allianceLabel = "UNKNOWN";
+    public static double SHOOT_TRIGGER_THRESHOLD = 0.2;
+
+    public static double SHOOT_INTAKE_LEFT_POWER = 0.3;
+    public static double SHOOT_INTAKE_RIGHT_POWER = 0.3;
+
+    public static double COLLECT_INTAKE_LEFT_POWER = 1.0;
+    public static double COLLECT_INTAKE_RIGHT_POWER = 1.0;
+
+    public static boolean USE_POSE_DELTA_VELOCITY = true;
+
+    private String allianceLabel = "FAR ZONE";
+
+    private boolean shooterEnabled = false;
+    private boolean autoAimMode = true;
 
     private boolean previousG1DpadUp = false;
     private boolean previousG1DpadRight = false;
@@ -84,32 +83,10 @@ public class CompetitionTeleOp extends OpMode {
     private boolean previousTriangle = false;
     private boolean previousG2Triangle = false;
 
-    public static boolean START_IN_AUTO_AIM = true;
-
-    private boolean autoAimMode = true;
-
-    public static double AIM_OFFSET_STEP = 0.00;
-    public static double AIM_OFFSET_MIN = -0.20;
-    public static double AIM_OFFSET_MAX = 0.20;
-
-    public static double DRIVE_SPEED = 1.0;
-    public static double INTAKE_TURN_MULTIPLIER = 0.45;
-    public static double FEED_DRIVE_MULTIPLIER = 0.50;
-
-    public static boolean USE_STATIC_TARGET_TPS = false;
-    public static double STATIC_TARGET_TPS = 1500.0;
-
-    private boolean shooterEnabled = false;
-
-    public static double SHOOT_TRIGGER_THRESHOLD = 0.2;
-
-    public static double SHOOT_INTAKE_LEFT_POWER = 0.5;
-    public static double SHOOT_INTAKE_RIGHT_POWER = 0.5;
-
-    public static double COLLECT_INTAKE_LEFT_POWER = 1.0;
-    public static double COLLECT_INTAKE_RIGHT_POWER = 1.0;
-
-    public static boolean USE_POSE_DELTA_VELOCITY = true;
+    private boolean previousG2DpadUp = false;
+    private boolean previousG2DpadDown = false;
+    private boolean previousG2LeftBumper = false;
+    private boolean previousG2RightBumper = false;
 
     private Pose previousVelocityPose = null;
     private double previousVelocityTime = 0.0;
@@ -123,15 +100,10 @@ public class CompetitionTeleOp extends OpMode {
         configureBulkCaching();
         clearBulkCache();
 
-        applyAllianceFromPoseStorage();
-
         follower = Constants.createFollower(hardwareMap);
+        follower.setStartingPose(startPose);
 
-        if (PoseStorage.currentPose != null) {
-            follower.setStartingPose(PoseStorage.currentPose);
-        } else {
-            follower.setStartingPose(getTeleOpResetPose());
-        }
+        PoseStorage.setPose(startPose);
 
         outtake = new Outtake();
         intake = new Intake();
@@ -141,8 +113,6 @@ public class CompetitionTeleOp extends OpMode {
         outtake.init(hardwareMap);
         intake.init(hardwareMap);
         turret.init(hardwareMap);
-
-        initialiseLimelight();
 
         shooterEnabled = false;
         autoAimMode = START_IN_AUTO_AIM;
@@ -159,22 +129,19 @@ public class CompetitionTeleOp extends OpMode {
             turret.setForward();
         }
 
-        telemetry.addLine("Competition TeleOp Initialised");
-        telemetry.addData("Alliance", allianceLabel);
+        telemetry.addLine("Far Zone Shooter Tuning Initialised");
+        telemetry.addData("Start X", "%.2f", startPose.getX());
+        telemetry.addData("Start Y", "%.2f", startPose.getY());
+        telemetry.addData("Start Heading", "%.1f", Math.toDegrees(startPose.getHeading()));
         telemetry.addData("Goal X", "%.2f", TELEOP_GOAL_X);
         telemetry.addData("Goal Y", "%.2f", TELEOP_GOAL_Y);
-        telemetry.addData("Reset X", "%.2f", TELEOP_RESET_X);
-        telemetry.addData("Reset Y", "%.2f", TELEOP_RESET_Y);
-        telemetry.addData("Reset Heading", "%.1f", TELEOP_RESET_HEADING_DEG);
+        telemetry.addData("Far Zone Requested TPS", "%.1f", FAR_ZONE_TARGET_TPS);
+        telemetry.addData("Outtake Far Zone Min", "%.1f", Outtake.farZoneMinTargetTPS);
+        telemetry.addData("Outtake Far Zone Max", "%.1f", Outtake.farZoneMaxTargetTPS);
+        telemetry.addData("Far Hood Slope", "%.5f", RobotHardware.farZoneHoodSlope);
+        telemetry.addData("Far Hood Intercept", "%.3f", RobotHardware.farZoneHoodIntercept);
+        telemetry.addData("Far Hood Velocity Factor", "%.3f", RobotHardware.farZoneHoodVelocityFactor);
         telemetry.addData("Bulk Caching", "MANUAL");
-        telemetry.addData("Drive Input", "Controller signs reversed");
-        telemetry.addData("Limelight Enabled", USE_LIMELIGHT);
-        telemetry.addData("Limelight Init", limelightInitialised);
-        telemetry.addData("Limelight Connected", limelightConnected);
-        telemetry.addData("Limelight Running", limelightRunning);
-        telemetry.addData("Limelight Pipeline", LIMELIGHT_PIPELINE);
-        telemetry.addData("LL Error Class", limelightLastErrorClass);
-        telemetry.addData("LL Error Message", limelightLastErrorMessage);
         telemetry.update();
     }
 
@@ -184,17 +151,19 @@ public class CompetitionTeleOp extends OpMode {
 
         follower.startTeleopDrive();
 
+        follower.setPose(startPose);
+        PoseStorage.setPose(startPose);
+
         shooterEnabled = false;
         autoAimMode = START_IN_AUTO_AIM;
 
-        applyAllianceFromPoseStorage();
+        FAR_ZONE_TARGET_TPS = clamp(FAR_ZONE_TARGET_TPS, MIN_TARGET_TPS, MAX_TARGET_TPS);
+
         updateTurretTargetFromTeleOpGoal();
 
         robotHardware.reset_all();
         intake.intakeStop();
         outtake.stopOuttake();
-
-        startLimelight();
 
         resetVelocityEstimate(follower.getPose());
 
@@ -207,11 +176,10 @@ public class CompetitionTeleOp extends OpMode {
     public void loop() {
         clearBulkCache();
 
-        updateLimelight();
-
         handlePoseReset();
         handleTurretModeControls();
         handleGamepad2TurretOffsetControls();
+        handleShooterTuningControls();
         handleShooterControls();
 
         updateTurretTargetFromTeleOpGoal();
@@ -232,18 +200,15 @@ public class CompetitionTeleOp extends OpMode {
         updateTurretAim(currentPose);
 
         if (shooterEnabled) {
-            if (USE_STATIC_TARGET_TPS) {
-                outtake.setTargetTPS(STATIC_TARGET_TPS);
-            } else {
-                outtake.linearRegression(distCM);
-            }
-
-            robotHardware.linearHoodRegression(distCM);
+            FAR_ZONE_TARGET_TPS = clamp(FAR_ZONE_TARGET_TPS, MIN_TARGET_TPS, MAX_TARGET_TPS);
+            outtake.setFarZoneTargetTPS(FAR_ZONE_TARGET_TPS);
         } else {
             outtake.stopOuttake();
         }
 
         outtake.updatePIDF();
+
+        robotHardware.farZoneHoodRegression(distCM);
 
         handleIntakeAndFeedControls();
 
@@ -266,8 +231,6 @@ public class CompetitionTeleOp extends OpMode {
         robotHardware.reset_all();
 
         turret.setForward();
-
-        stopLimelight();
     }
 
     private void configureBulkCaching() {
@@ -288,194 +251,10 @@ public class CompetitionTeleOp extends OpMode {
         }
     }
 
-    private void initialiseLimelight() {
-        limelightInitialised = false;
-        limelightConnected = false;
-        limelightRunning = false;
-        limelightHasTarget = false;
-
-        limelightTx = 0.0;
-        limelightTy = 0.0;
-        limelightTa = 0.0;
-        limelightPipelineIndex = -1.0;
-        limelightMsSinceUpdate = -1;
-
-        limelightLastErrorClass = "None";
-        limelightLastErrorMessage = "None";
-
-        if (!USE_LIMELIGHT) {
-            limelightLastErrorClass = "Disabled";
-            limelightLastErrorMessage = "USE_LIMELIGHT is false";
-            return;
-        }
-
-        try {
-            limelight = hardwareMap.get(Limelight3A.class, "limelight");
-
-            limelight.setPollRateHz(LIMELIGHT_POLL_RATE_HZ);
-            limelight.pipelineSwitch(LIMELIGHT_PIPELINE);
-            limelight.start();
-
-            limelightInitialised = true;
-            limelightConnected = limelight.isConnected();
-            limelightRunning = limelight.isRunning();
-
-            limelightLastErrorClass = "None";
-            limelightLastErrorMessage = "None";
-        } catch (Exception e) {
-            limelight = null;
-
-            limelightInitialised = false;
-            limelightConnected = false;
-            limelightRunning = false;
-            limelightHasTarget = false;
-
-            limelightLastErrorClass = e.getClass().getSimpleName();
-            limelightLastErrorMessage = e.getMessage();
-        }
-    }
-
-    private void startLimelight() {
-        if (!USE_LIMELIGHT || limelight == null) {
-            return;
-        }
-
-        try {
-            limelight.setPollRateHz(LIMELIGHT_POLL_RATE_HZ);
-            limelight.pipelineSwitch(LIMELIGHT_PIPELINE);
-            limelight.start();
-
-            limelightConnected = limelight.isConnected();
-            limelightRunning = limelight.isRunning();
-
-            limelightLastErrorClass = "None";
-            limelightLastErrorMessage = "None";
-        } catch (Exception e) {
-            limelightConnected = false;
-            limelightRunning = false;
-            limelightHasTarget = false;
-
-            limelightLastErrorClass = e.getClass().getSimpleName();
-            limelightLastErrorMessage = e.getMessage();
-        }
-    }
-
-    private void updateLimelight() {
-        if (!USE_LIMELIGHT || limelight == null) {
-            limelightConnected = false;
-            limelightRunning = false;
-            limelightHasTarget = false;
-
-            limelightTx = 0.0;
-            limelightTy = 0.0;
-            limelightTa = 0.0;
-            limelightPipelineIndex = -1.0;
-            limelightMsSinceUpdate = -1;
-
-            return;
-        }
-
-        try {
-            limelightConnected = limelight.isConnected();
-            limelightRunning = limelight.isRunning();
-            limelightMsSinceUpdate = limelight.getTimeSinceLastUpdate();
-
-            LLResult result = limelight.getLatestResult();
-
-            if (result != null && result.isValid()) {
-                limelightHasTarget = true;
-
-                limelightTx = result.getTx();
-                limelightTy = result.getTy();
-                limelightTa = result.getTa();
-                limelightPipelineIndex = result.getPipelineIndex();
-            } else {
-                limelightHasTarget = false;
-
-                limelightTx = 0.0;
-                limelightTy = 0.0;
-                limelightTa = 0.0;
-            }
-
-            limelightLastErrorClass = "None";
-            limelightLastErrorMessage = "None";
-        } catch (Exception e) {
-            limelightConnected = false;
-            limelightRunning = false;
-            limelightHasTarget = false;
-
-            limelightTx = 0.0;
-            limelightTy = 0.0;
-            limelightTa = 0.0;
-
-            limelightLastErrorClass = e.getClass().getSimpleName();
-            limelightLastErrorMessage = e.getMessage();
-        }
-    }
-
-    private void stopLimelight() {
-        if (limelight == null) {
-            return;
-        }
-
-        try {
-            limelight.stop();
-        } catch (Exception e) {
-            limelightLastErrorClass = e.getClass().getSimpleName();
-            limelightLastErrorMessage = e.getMessage();
-        }
-
-        limelightRunning = false;
-        limelightHasTarget = false;
-    }
-
-    private void applyAllianceFromPoseStorage() {
-        if (PoseStorage.isRed()) {
-            allianceLabel = "RED";
-
-            TELEOP_GOAL_X = RED_GOAL_X;
-            TELEOP_GOAL_Y = RED_GOAL_Y;
-
-            TELEOP_RESET_X = RED_RESET_X;
-            TELEOP_RESET_Y = RED_RESET_Y;
-            TELEOP_RESET_HEADING_DEG = RED_RESET_HEADING_DEG;
-
-            return;
-        }
-
-        if (PoseStorage.isBlue()) {
-            allianceLabel = "BLUE";
-
-            TELEOP_GOAL_X = BLUE_GOAL_X;
-            TELEOP_GOAL_Y = BLUE_GOAL_Y;
-
-            TELEOP_RESET_X = BLUE_RESET_X;
-            TELEOP_RESET_Y = BLUE_RESET_Y;
-            TELEOP_RESET_HEADING_DEG = BLUE_RESET_HEADING_DEG;
-
-            return;
-        }
-
-        allianceLabel = "UNKNOWN - DEFAULT BLUE";
-
-        TELEOP_GOAL_X = BLUE_GOAL_X;
-        TELEOP_GOAL_Y = BLUE_GOAL_Y;
-
-        TELEOP_RESET_X = BLUE_RESET_X;
-        TELEOP_RESET_Y = BLUE_RESET_Y;
-        TELEOP_RESET_HEADING_DEG = BLUE_RESET_HEADING_DEG;
-    }
-
     private void driveRobot() {
-        /*
-         * Controller input signs reversed for TeleOp only.
-         *
-         * This does not affect autonomous pathing because auto does not use
-         * gamepad input through follower.setTeleOpDrive().
-         */
-        double forward = gamepad1.left_stick_y * DRIVE_SPEED;
-        double strafe = gamepad1.left_stick_x * DRIVE_SPEED;
-        double turn = gamepad1.right_stick_x * DRIVE_SPEED;
+        double forward = -gamepad1.left_stick_y * DRIVE_SPEED;
+        double strafe = -gamepad1.left_stick_x * DRIVE_SPEED;
+        double turn = -gamepad1.right_stick_x * DRIVE_SPEED;
 
         if (isCollectIntakeActive()) {
             turn *= INTAKE_TURN_MULTIPLIER;
@@ -547,6 +326,38 @@ public class CompetitionTeleOp extends OpMode {
         previousG2Square = currentG2Square;
     }
 
+    private void handleShooterTuningControls() {
+        boolean currentG2DpadUp = gamepad2.dpad_up;
+        boolean currentG2DpadDown = gamepad2.dpad_down;
+        boolean currentG2LeftBumper = gamepad2.left_bumper;
+        boolean currentG2RightBumper = gamepad2.right_bumper;
+
+        if (currentG2DpadUp && !previousG2DpadUp) {
+            FAR_ZONE_TARGET_TPS += TPS_STEP_SMALL;
+            FAR_ZONE_TARGET_TPS = clamp(FAR_ZONE_TARGET_TPS, MIN_TARGET_TPS, MAX_TARGET_TPS);
+        }
+
+        if (currentG2DpadDown && !previousG2DpadDown) {
+            FAR_ZONE_TARGET_TPS -= TPS_STEP_SMALL;
+            FAR_ZONE_TARGET_TPS = clamp(FAR_ZONE_TARGET_TPS, MIN_TARGET_TPS, MAX_TARGET_TPS);
+        }
+
+        if (currentG2RightBumper && !previousG2RightBumper) {
+            FAR_ZONE_TARGET_TPS += TPS_STEP_LARGE;
+            FAR_ZONE_TARGET_TPS = clamp(FAR_ZONE_TARGET_TPS, MIN_TARGET_TPS, MAX_TARGET_TPS);
+        }
+
+        if (currentG2LeftBumper && !previousG2LeftBumper) {
+            FAR_ZONE_TARGET_TPS -= TPS_STEP_LARGE;
+            FAR_ZONE_TARGET_TPS = clamp(FAR_ZONE_TARGET_TPS, MIN_TARGET_TPS, MAX_TARGET_TPS);
+        }
+
+        previousG2DpadUp = currentG2DpadUp;
+        previousG2DpadDown = currentG2DpadDown;
+        previousG2LeftBumper = currentG2LeftBumper;
+        previousG2RightBumper = currentG2RightBumper;
+    }
+
     private void handleShooterControls() {
         boolean currentSquare = gamepad1.x;
         boolean currentTriangle = gamepad1.y;
@@ -584,7 +395,7 @@ public class CompetitionTeleOp extends OpMode {
         boolean currentDpadRight = gamepad1.dpad_right;
 
         if (currentDpadRight && !previousG1DpadRight) {
-            Pose resetPose = getTeleOpResetPose();
+            Pose resetPose = getFarZoneResetPose();
 
             follower.setPose(resetPose);
             PoseStorage.setPose(resetPose);
@@ -652,6 +463,7 @@ public class CompetitionTeleOp extends OpMode {
 
         estimatedFieldVelocityX = dx / dt;
         estimatedFieldVelocityY = dy / dt;
+
         estimatedFieldSpeed = Math.hypot(
                 estimatedFieldVelocityX,
                 estimatedFieldVelocityY
@@ -678,11 +490,11 @@ public class CompetitionTeleOp extends OpMode {
         );
     }
 
-    private Pose getTeleOpResetPose() {
+    private Pose getFarZoneResetPose() {
         return new Pose(
-                TELEOP_RESET_X,
-                TELEOP_RESET_Y,
-                Math.toRadians(TELEOP_RESET_HEADING_DEG)
+                FAR_ZONE_RESET_X,
+                FAR_ZONE_RESET_Y,
+                Math.toRadians(FAR_ZONE_RESET_HEADING_DEG)
         );
     }
 
@@ -718,7 +530,7 @@ public class CompetitionTeleOp extends OpMode {
         String readyState = atSpeed ? "READY" : "SPIN UP";
         String turretState = autoAimMode ? "AUTO" : "FORWARD";
         String feedState = isFeedRequested() ? "FEED" : "IDLE";
-        String limelightState = limelightHasTarget ? "TARGET" : "NO TARGET";
+        String farZoneMode = Outtake.usingFarZoneTarget ? "FAR" : "NORMAL";
 
         telemetry.addLine(
                 allianceLabel +
@@ -730,39 +542,44 @@ public class CompetitionTeleOp extends OpMode {
 
         telemetry.addLine(
                 "DIST:" + format("%.0f", distCM) +
-                        "cm | TPS:" + format("%.0f", Outtake.currentTPS) +
-                        "/" + format("%.0f", Outtake.target)
+                        "cm | MODE:" + farZoneMode
         );
 
         telemetry.addLine(
-                "OFFSET:" + format("%.3f", Turret.AIM_OFFSET) +
-                        " | STEP:" + format("%.3f", AIM_OFFSET_STEP)
+                "REQUEST:" + format("%.0f", Outtake.requestedTarget) +
+                        " | TARGET:" + format("%.0f", Outtake.target) +
+                        " | CURRENT:" + format("%.0f", Outtake.currentTPS)
         );
 
         telemetry.addLine(
-                "LL:" + limelightState +
-                        " | TX:" + format("%.2f", limelightTx) +
-                        " | TY:" + format("%.2f", limelightTy) +
-                        " | TA:" + format("%.2f", limelightTa)
+                "HOOD RAW:" + format("%.3f", RobotHardware.lastRawHoodTarget) +
+                        " | CLIPPED:" + format("%.3f", RobotHardware.lastClippedHoodTarget) +
+                        " | CMD:" + format("%.3f", RobotHardware.lastCommandedHood)
         );
 
         telemetry.addLine(
-                "LL INIT:" + limelightInitialised +
-                        " | CONNECTED:" + limelightConnected +
-                        " | RUNNING:" + limelightRunning
+                "FAR HOOD SLOPE:" + format("%.5f", RobotHardware.farZoneHoodSlope) +
+                        " | INT:" + format("%.3f", RobotHardware.farZoneHoodIntercept)
         );
 
         telemetry.addLine(
-                "LL PIPE:" + format("%.0f", limelightPipelineIndex) +
-                        " | AGE:" + limelightMsSinceUpdate + "ms"
+                "VEL COMP FACTOR:" + format("%.3f", RobotHardware.farZoneHoodVelocityFactor) +
+                        " | OFFSET:" + format("%.3f", Turret.AIM_OFFSET)
         );
 
         telemetry.addLine(
-                "LL ERROR:" + limelightLastErrorClass +
-                        " | " + limelightLastErrorMessage
+                "TPS STEP:" + format("%.0f", TPS_STEP_SMALL) +
+                        "/" + format("%.0f", TPS_STEP_LARGE)
         );
 
-        telemetry.addLine("Drive Input: TeleOp controller signs reversed");
+        telemetry.addLine(
+                "POSE X:" + format("%.1f", follower.getPose().getX()) +
+                        " Y:" + format("%.1f", follower.getPose().getY()) +
+                        " H:" + format("%.1f", Math.toDegrees(follower.getPose().getHeading()))
+        );
+
+        telemetry.addLine("G1 X: shooter on | G1 Y/G2 Y: reset | G1 RT: feed");
+        telemetry.addLine("G2 D-pad up/down: TPS small | G2 bumpers: TPS large");
 
         telemetry.update();
     }

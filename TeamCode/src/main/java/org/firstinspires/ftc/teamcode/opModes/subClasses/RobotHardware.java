@@ -12,9 +12,11 @@ public class RobotHardware {
 
     public static double hoodSlope = -0.00365;
     public static double hoodIntercept = 0.8;
-
     public static double hoodVelocityFactor = 0.9;
 
+    public static double farZoneHoodSlope = -0.00365;
+    public static double farZoneHoodIntercept = 0.9;
+    public static double farZoneHoodVelocityFactor = 1.5;
 
     public static double hoodMin = 0.3;
     public static double hoodMax = 0.9;
@@ -38,7 +40,6 @@ public class RobotHardware {
         hoodServo = hardwareMap.get(Servo.class, "hoodServo");
         blockServo = hardwareMap.get(Servo.class, "blockServo");
 
-        //hoodServo.setDirection(Servo.Direction.REVERSE);
         blockServo.setDirection(Servo.Direction.REVERSE);
 
         reset_all();
@@ -46,6 +47,7 @@ public class RobotHardware {
 
     public void setHoodPosition(double targetPosition) {
         double clipped = clamp(targetPosition, hoodMin, hoodMax);
+
         lastRawHoodTarget = targetPosition;
         lastClippedHoodTarget = clipped;
 
@@ -72,20 +74,38 @@ public class RobotHardware {
 
     public void linearHoodRegression(double distanceCM) {
         double workingDistanceCM = filterDistance(distanceCM);
-        double velocityComp = calculateVelocityCompensation();
-        double position = (hoodSlope * workingDistanceCM) + hoodIntercept + velocityComp;
+        double velocityComp = calculateVelocityCompensation(hoodVelocityFactor);
+
+        double position =
+                (hoodSlope * workingDistanceCM)
+                        + hoodIntercept
+                        + velocityComp;
+
         setHoodPosition(position);
     }
 
-    private double calculateVelocityCompensation() {
-        if (Outtake.target <= 0) {
+    public void farZoneHoodRegression(double distanceCM) {
+        double workingDistanceCM = filterDistance(distanceCM);
+        double velocityComp = calculateVelocityCompensation(farZoneHoodVelocityFactor);
+
+        double position =
+                (farZoneHoodSlope * workingDistanceCM)
+                        + farZoneHoodIntercept
+                        + velocityComp;
+
+        setHoodPosition(position);
+    }
+
+    private double calculateVelocityCompensation(double velocityFactor) {
+        if (Outtake.target <= 0.0) {
             return 0.0;
         }
 
         double tpsRatio = Outtake.currentTPS / Outtake.target;
         tpsRatio = clamp(tpsRatio, 0.0, 1.2);
 
-        double velocityComp = (1.0 - tpsRatio) * hoodVelocityFactor;
+        double velocityComp = (1.0 - tpsRatio) * velocityFactor;
+
         return Math.max(0.0, velocityComp);
     }
 
@@ -99,7 +119,9 @@ public class RobotHardware {
             filteredDistanceCM = distanceCM;
             distanceFilterInitialised = true;
         } else {
-            filteredDistanceCM = (distanceAlpha * distanceCM) + ((1.0 - distanceAlpha) * filteredDistanceCM);
+            filteredDistanceCM =
+                    (distanceAlpha * distanceCM)
+                            + ((1.0 - distanceAlpha) * filteredDistanceCM);
         }
 
         return filteredDistanceCM;
