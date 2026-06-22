@@ -23,6 +23,24 @@ public class Intake {
     public static double detectTimeSeconds = 0.2;
     public static double farZoneFeederPower = 0.3;
 
+    /*
+     * IMPORTANT:
+     * Most digital beam-break / proximity sensors are active-low.
+     *
+     * If raw sensor state is:
+     * true  = no ball
+     * false = ball detected
+     *
+     * then sensorTriggeredWhenLow should stay true.
+     *
+     * If your sensor is the opposite:
+     * true  = ball detected
+     * false = no ball
+     *
+     * then change this to false in Panels.
+     */
+    public static boolean sensorTriggeredWhenLow = true;
+
     public static boolean rawSensorState = false;
     public static boolean ballDetected = false;
     public static double detectedTimeSeconds = 0.0;
@@ -52,10 +70,11 @@ public class Intake {
 
         detectionStartTime = -1;
         detectedTimeSeconds = 0.0;
-        rawSensorState = false;
-        ballDetected = false;
-        lastLedPosition = red;
 
+        rawSensorState = ballSensor.getState();
+        ballDetected = false;
+
+        lastLedPosition = red;
         lastFrontPower = 0.0;
         lastBackPower = 0.0;
 
@@ -65,15 +84,14 @@ public class Intake {
 
     public void update() {
         rawSensorState = ballSensor.getState();
-        ballDetected = isBallDetected();
+        ballDetected = isBallDetectedFromRaw(rawSensorState);
 
         if (ballDetected) {
             if (detectionStartTime < 0) {
                 detectionStartTime = System.currentTimeMillis();
             }
 
-            detectedTimeSeconds =
-                    (System.currentTimeMillis() - detectionStartTime) / 1000.0;
+            detectedTimeSeconds = (System.currentTimeMillis() - detectionStartTime) / 1000.0;
 
             if (detectedTimeSeconds >= detectTimeSeconds) {
                 setLedGreen();
@@ -88,7 +106,16 @@ public class Intake {
     }
 
     public boolean isBallDetected() {
-        return ballSensor.getState();
+        rawSensorState = ballSensor.getState();
+        return isBallDetectedFromRaw(rawSensorState);
+    }
+
+    private boolean isBallDetectedFromRaw(boolean rawState) {
+        if (sensorTriggeredWhenLow) {
+            return !rawState;
+        } else {
+            return rawState;
+        }
     }
 
     public boolean isBallReady() {
@@ -145,9 +172,11 @@ public class Intake {
     public void resetDetectionTimer() {
         detectionStartTime = -1;
         detectedTimeSeconds = 0.0;
+        ballDetected = false;
+        setLedRed();
     }
 
-    private double clamp(double v, double min) {
-        return Math.max(min, Math.min(1.0, v));
+    private double clamp(double value, double min) {
+        return Math.max(min, Math.min(1.0, value));
     }
 }
