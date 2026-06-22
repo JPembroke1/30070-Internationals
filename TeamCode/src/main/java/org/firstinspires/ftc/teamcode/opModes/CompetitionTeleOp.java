@@ -1,7 +1,7 @@
 package org.firstinspires.ftc.teamcode.opModes;
 
-import com.bylazar.configurables.annotations.Configurable;
 import com.pedropathing.follower.Follower;
+import com.bylazar.configurables.annotations.Configurable;
 import com.pedropathing.geometry.Pose;
 import com.qualcomm.hardware.limelightvision.LLResult;
 import com.qualcomm.hardware.limelightvision.Limelight3A;
@@ -17,6 +17,7 @@ import org.firstinspires.ftc.teamcode.pedroPathing.Constants;
 
 import java.util.List;
 import java.util.Locale;
+
 
 @Configurable
 @TeleOp(name = "00 - Competition TeleOp", group = "Competition")
@@ -51,6 +52,25 @@ public class CompetitionTeleOp extends OpMode {
     public static double TELEOP_RESET_X = 24.0;
     public static double TELEOP_RESET_Y = 138.0;
     public static double TELEOP_RESET_HEADING_DEG = 145.0;
+
+    public static double FAR_TRIANGLE_LEFT_X_IN = 56.0;
+    public static double FAR_TRIANGLE_LEFT_Y_IN = 8.5;
+
+    public static double FAR_TRIANGLE_TOP_X_IN = 72.0;
+    public static double FAR_TRIANGLE_TOP_Y_IN = 22.0;
+
+    public static double FAR_TRIANGLE_RIGHT_X_IN = 86.0;
+    public static double FAR_TRIANGLE_RIGHT_Y_IN = 8.5;
+
+    public static double FAR_ZONE_ENTER_DISTANCE_IN = 8.0;
+    public static double FAR_ZONE_EXIT_DISTANCE_IN = 12.0;
+
+    public static double FAR_ZONE_TARGET_TPS = 2750.0;
+    public static double FAR_ZONE_HOOD_DISTANCE_CM = 200.0;
+    public static double FAR_ZONE_FEEDER_POWER = 0.3;
+
+    private boolean farZoneActive = false;
+    private double farZoneDistanceIn = 0.0;
 
     public static boolean USE_LIMELIGHT = true;
     public static int LIMELIGHT_PIPELINE = 0;
@@ -146,6 +166,8 @@ public class CompetitionTeleOp extends OpMode {
 
         shooterEnabled = false;
         autoAimMode = START_IN_AUTO_AIM;
+        farZoneActive = false;
+        farZoneDistanceIn = 0.0;
 
         updateTurretTargetFromTeleOpGoal();
 
@@ -159,13 +181,11 @@ public class CompetitionTeleOp extends OpMode {
             turret.setForward();
         }
 
-        telemetry.addLine("Competition TeleOp Initialised");
+        telemetry.addLine("===== COMPETITION TELEOP INITIALISED =====");
         telemetry.addData("Alliance", allianceLabel);
-        telemetry.addData("Goal X", "%.2f", TELEOP_GOAL_X);
-        telemetry.addData("Goal Y", "%.2f", TELEOP_GOAL_Y);
-        telemetry.addData("Reset X", "%.2f", TELEOP_RESET_X);
-        telemetry.addData("Reset Y", "%.2f", TELEOP_RESET_Y);
-        telemetry.addData("Reset Heading", "%.1f", TELEOP_RESET_HEADING_DEG);
+        telemetry.addData("Goal", format("%.2f", TELEOP_GOAL_X) + ", " + format("%.2f", TELEOP_GOAL_Y));
+        telemetry.addData("Reset", format("%.2f", TELEOP_RESET_X) + ", " + format("%.2f", TELEOP_RESET_Y));
+        telemetry.addData("Reset Heading", format("%.1f", TELEOP_RESET_HEADING_DEG));
         telemetry.addData("Bulk Caching", "MANUAL");
         telemetry.addData("Drive Input", "Controller signs reversed");
         telemetry.addData("Limelight Enabled", USE_LIMELIGHT);
@@ -186,6 +206,8 @@ public class CompetitionTeleOp extends OpMode {
 
         shooterEnabled = false;
         autoAimMode = START_IN_AUTO_AIM;
+        farZoneActive = false;
+        farZoneDistanceIn = 0.0;
 
         applyAllianceFromPoseStorage();
         updateTurretTargetFromTeleOpGoal();
@@ -229,16 +251,22 @@ public class CompetitionTeleOp extends OpMode {
 
         double distCM = distanceToTeleOpGoalCM(currentPose);
 
+        updateFarZoneState(currentPose);
         updateTurretAim(currentPose);
 
         if (shooterEnabled) {
-            if (USE_STATIC_TARGET_TPS) {
-                outtake.setTargetTPS(STATIC_TARGET_TPS);
+            if (farZoneActive) {
+                outtake.setFarZoneTargetTPS(FAR_ZONE_TARGET_TPS);
+                robotHardware.linearHoodRegression(FAR_ZONE_HOOD_DISTANCE_CM);
             } else {
-                outtake.linearRegression(distCM);
-            }
+                if (USE_STATIC_TARGET_TPS) {
+                    outtake.setTargetTPS(STATIC_TARGET_TPS);
+                } else {
+                    outtake.linearRegression(distCM);
+                }
 
-            robotHardware.linearHoodRegression(distCM);
+                robotHardware.linearHoodRegression(distCM);
+            }
         } else {
             outtake.stopOuttake();
         }
@@ -258,6 +286,7 @@ public class CompetitionTeleOp extends OpMode {
 
         shooterEnabled = false;
         autoAimMode = false;
+        farZoneActive = false;
 
         outtake.stopOuttake();
         outtake.updatePIDF();
@@ -467,12 +496,6 @@ public class CompetitionTeleOp extends OpMode {
     }
 
     private void driveRobot() {
-        /*
-         * Controller input signs reversed for TeleOp only.
-         *
-         * This does not affect autonomous pathing because auto does not use
-         * gamepad input through follower.setTeleOpDrive().
-         */
         double forward = gamepad1.left_stick_y * DRIVE_SPEED;
         double strafe = gamepad1.left_stick_x * DRIVE_SPEED;
         double turn = gamepad1.right_stick_x * DRIVE_SPEED;
@@ -571,6 +594,7 @@ public class CompetitionTeleOp extends OpMode {
     private void resetShooterIntakeHoodAndTurret() {
         shooterEnabled = false;
         autoAimMode = false;
+        farZoneActive = false;
 
         outtake.stopOuttake();
         intake.intakeStop();
@@ -601,7 +625,13 @@ public class CompetitionTeleOp extends OpMode {
     private void handleIntakeAndFeedControls() {
         if (isFeedRequested() && shooterEnabled) {
             robotHardware.release();
-            intake.intake(SHOOT_INTAKE_LEFT_POWER, SHOOT_INTAKE_RIGHT_POWER);
+
+            if (farZoneActive) {
+                intake.intake(FAR_ZONE_FEEDER_POWER, FAR_ZONE_FEEDER_POWER);
+            } else {
+                intake.intake(SHOOT_INTAKE_LEFT_POWER, SHOOT_INTAKE_RIGHT_POWER);
+            }
+
             return;
         }
 
@@ -621,6 +651,88 @@ public class CompetitionTeleOp extends OpMode {
 
     private boolean isFeedRequested() {
         return gamepad1.right_trigger > SHOOT_TRIGGER_THRESHOLD;
+    }
+
+    private void updateFarZoneState(Pose robotPose) {
+        if (robotPose == null) {
+            farZoneActive = false;
+            farZoneDistanceIn = 0.0;
+            return;
+        }
+
+        farZoneDistanceIn = distanceToTriangleEdges(
+                robotPose.getX(),
+                robotPose.getY()
+        );
+
+        if (!farZoneActive && farZoneDistanceIn <= FAR_ZONE_ENTER_DISTANCE_IN) {
+            farZoneActive = true;
+        } else if (farZoneActive && farZoneDistanceIn >= FAR_ZONE_EXIT_DISTANCE_IN) {
+            farZoneActive = false;
+        }
+    }
+
+    private double distanceToTriangleEdges(double px, double py) {
+        double distanceLeftToTop = distanceToLineSegment(
+                px,
+                py,
+                FAR_TRIANGLE_LEFT_X_IN,
+                FAR_TRIANGLE_LEFT_Y_IN,
+                FAR_TRIANGLE_TOP_X_IN,
+                FAR_TRIANGLE_TOP_Y_IN
+        );
+
+        double distanceTopToRight = distanceToLineSegment(
+                px,
+                py,
+                FAR_TRIANGLE_TOP_X_IN,
+                FAR_TRIANGLE_TOP_Y_IN,
+                FAR_TRIANGLE_RIGHT_X_IN,
+                FAR_TRIANGLE_RIGHT_Y_IN
+        );
+
+        double distanceRightToLeft = distanceToLineSegment(
+                px,
+                py,
+                FAR_TRIANGLE_RIGHT_X_IN,
+                FAR_TRIANGLE_RIGHT_Y_IN,
+                FAR_TRIANGLE_LEFT_X_IN,
+                FAR_TRIANGLE_LEFT_Y_IN
+        );
+
+        return Math.min(
+                distanceLeftToTop,
+                Math.min(distanceTopToRight, distanceRightToLeft)
+        );
+    }
+
+    private double distanceToLineSegment(
+            double px,
+            double py,
+            double ax,
+            double ay,
+            double bx,
+            double by
+    ) {
+        double abX = bx - ax;
+        double abY = by - ay;
+
+        double apX = px - ax;
+        double apY = py - ay;
+
+        double abLengthSquared = (abX * abX) + (abY * abY);
+
+        if (abLengthSquared == 0.0) {
+            return Math.hypot(px - ax, py - ay);
+        }
+
+        double t = ((apX * abX) + (apY * abY)) / abLengthSquared;
+        t = clamp(t, 0.0, 1.0);
+
+        double closestX = ax + (t * abX);
+        double closestY = ay + (t * abY);
+
+        return Math.hypot(px - closestX, py - closestY);
     }
 
     private void updateEstimatedFieldVelocity(Pose currentPose) {
@@ -718,51 +830,94 @@ public class CompetitionTeleOp extends OpMode {
         String readyState = atSpeed ? "READY" : "SPIN UP";
         String turretState = autoAimMode ? "AUTO" : "FORWARD";
         String feedState = isFeedRequested() ? "FEED" : "IDLE";
+        String collectState = isCollectIntakeActive() ? "COLLECT" : "IDLE";
         String limelightState = limelightHasTarget ? "TARGET" : "NO TARGET";
+        String farZoneState = farZoneActive ? "FAR ZONE" : "NORMAL";
+        String shooterMode = farZoneActive ? "FAR FIXED" : "REGRESSION";
+
+        telemetry.addLine("===== DRIVER HUD =====");
 
         telemetry.addLine(
                 allianceLabel +
                         " | SHOOTER:" + shooterState +
                         " | " + readyState +
-                        " | " + turretState +
-                        " | " + feedState
+                        " | AIM:" + turretState
         );
 
         telemetry.addLine(
-                "DIST:" + format("%.0f", distCM) +
-                        "cm | TPS:" + format("%.0f", Outtake.currentTPS) +
-                        "/" + format("%.0f", Outtake.target)
+                "FEED:" + feedState +
+                        " | INTAKE:" + collectState +
+                        " | ZONE:" + farZoneState
+        );
+
+        telemetry.addLine("");
+
+        telemetry.addLine("===== SHOOTER =====");
+
+        telemetry.addLine(
+                "MODE:" + shooterMode +
+                        " | DIST:" + format("%.0f", distCM) + "cm"
         );
 
         telemetry.addLine(
-                "OFFSET:" + format("%.3f", Turret.AIM_OFFSET) +
-                        " | STEP:" + format("%.3f", AIM_OFFSET_STEP)
+                "TPS:" + format("%.0f", Outtake.currentTPS) +
+                        "/" + format("%.0f", Outtake.target) +
+                        " | READY:" + atSpeed
         );
 
         telemetry.addLine(
-                "LL:" + limelightState +
+                "FAR TPS:" + format("%.0f", FAR_ZONE_TARGET_TPS) +
+                        " | FAR EDGE:" + format("%.1f", farZoneDistanceIn) + "in"
+        );
+
+        telemetry.addLine("");
+
+        telemetry.addLine("===== AIMING =====");
+
+        telemetry.addLine(
+                "GOAL:" + format("%.1f", TELEOP_GOAL_X) +
+                        "," + format("%.1f", TELEOP_GOAL_Y) +
+                        " | OFFSET:" + format("%.3f", Turret.AIM_OFFSET)
+        );
+
+        telemetry.addLine(
+                "STEP:" + format("%.3f", AIM_OFFSET_STEP) +
+                        " | FIELD SPEED:" + format("%.1f", estimatedFieldSpeed) + "in/s"
+        );
+
+        telemetry.addLine("");
+
+        telemetry.addLine("===== LIMELIGHT =====");
+
+        telemetry.addLine(
+                "STATE:" + limelightState +
                         " | TX:" + format("%.2f", limelightTx) +
                         " | TY:" + format("%.2f", limelightTy) +
                         " | TA:" + format("%.2f", limelightTa)
         );
 
         telemetry.addLine(
-                "LL INIT:" + limelightInitialised +
+                "INIT:" + limelightInitialised +
                         " | CONNECTED:" + limelightConnected +
                         " | RUNNING:" + limelightRunning
         );
 
         telemetry.addLine(
-                "LL PIPE:" + format("%.0f", limelightPipelineIndex) +
+                "PIPE:" + format("%.0f", limelightPipelineIndex) +
                         " | AGE:" + limelightMsSinceUpdate + "ms"
         );
 
         telemetry.addLine(
-                "LL ERROR:" + limelightLastErrorClass +
+                "ERROR:" + limelightLastErrorClass +
                         " | " + limelightLastErrorMessage
         );
 
+        telemetry.addLine("");
+
+        telemetry.addLine("===== DRIVE =====");
+
         telemetry.addLine("Drive Input: TeleOp controller signs reversed");
+        telemetry.addLine("Cross/Square/Triangle names treated as PlayStation layout");
 
         telemetry.update();
     }

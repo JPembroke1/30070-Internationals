@@ -6,7 +6,6 @@ import com.pedropathing.geometry.BezierLine;
 import com.pedropathing.geometry.Pose;
 import com.pedropathing.ivy.Command;
 import com.pedropathing.ivy.Scheduler;
-import com.pedropathing.paths.HeadingInterpolator;
 import com.pedropathing.paths.PathChain;
 import com.qualcomm.hardware.lynx.LynxModule;
 import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
@@ -31,8 +30,8 @@ import static com.pedropathing.ivy.groups.Groups.sequential;
 import static com.pedropathing.ivy.pedro.PedroCommands.follow;
 
 @Configurable
-@Autonomous(name = "00 Gate Auto 15 Blue", group = "Blue")
-public class GateAuto15Blue extends OpMode {
+@Autonomous(name = "00 Far Zone Auto Blue", group = "Blue")
+public class FarZoneAutoBlue extends OpMode {
 
     private Follower follower;
     private Intake intake;
@@ -45,11 +44,13 @@ public class GateAuto15Blue extends OpMode {
     public static double GOAL_X = 6.0;
     public static double GOAL_Y = 138.0;
 
+    public static double FAR_ZONE_TARGET_TPS = 2750.0;
+    public static double FAR_ZONE_HOOD_DISTANCE_CM = 200.0;
+
     public static double SHOOT_SETTLE_SECONDS = 0.3;
     public static double SHOOT_FEED_SECONDS = 0.4;
-    public static double GATE_COLLECT_SECONDS = 2.5;
 
-    public static double RETURN_INTAKE_SECONDS = 0.35;
+    public static double TIMED_INTAKE_SECONDS = 0.35;
 
     public static double SHOOT_INTAKE_LEFT_POWER = 1.0;
     public static double SHOOT_INTAKE_RIGHT_POWER = 1.0;
@@ -58,12 +59,10 @@ public class GateAuto15Blue extends OpMode {
     public static double COLLECT_INTAKE_RIGHT_POWER = 1.0;
 
     public static double SHOOT_PATH_POWER = 1.0;
-    public static double STACK_PATH_POWER = 0.80;
-    public static double STACK_EXIT_PATH_POWER = 0.75;
-    public static double GATE_PATH_POWER = 0.65;
+    public static double WALL_STACK_PATH_POWER = 0.8;
+    public static double STACK_3_PATH_POWER = 0.75;
+    public static double OVERFLOW_PATH_POWER = 0.65;
     public static double END_PATH_POWER = 1.0;
-
-    public static double GATE_FOLLOW_TIMEOUT_SECONDS = 1.0;
 
     public static double TPS_SPINUP_TIMEOUT = 0.3;
     public static double TPS_READY_THRESHOLD = 0.95;
@@ -72,44 +71,28 @@ public class GateAuto15Blue extends OpMode {
     private boolean tpsTimeoutFired = false;
     private boolean outtakeEnabled = true;
 
-    public static boolean USE_POSE_DELTA_VELOCITY = true;
-    public static double VELOCITY_SMOOTHING_ALPHA = 0.35;
-
-    private Pose previousVelocityPose = null;
-    private double previousVelocityTime = 0.0;
-
-    private double rawVelocityX = 0.0;
-    private double rawVelocityY = 0.0;
-
-    private double estimatedVelocityX = 0.0;
-    private double estimatedVelocityY = 0.0;
-
-    private double velocityDt = 0.0;
     private double currentDistanceCM = 0.0;
 
-    private final Pose startPose = new Pose(21, 123, Math.toRadians(145));
-    private final Pose shootPose = new Pose(60, 86, Math.toRadians(180));
+    private final Pose shootPose = new Pose(56, 8.5, Math.toRadians(180));
+    private final Pose wallStackPose = new Pose(56, 86, Math.toRadians(180));
+    private final Pose shoot2Pose = new Pose(56, 8.5, Math.toRadians(180));
 
-    private final Pose stack1Pose = new Pose(17, 84, Math.toRadians(180));
+    private final Pose stack3Pose = new Pose(45, 35, Math.toRadians(180));
+    private final Pose stack3CollectPose = new Pose(7, 35, Math.toRadians(180));
+    private final Pose shoot3Pose = new Pose(56, 8.5, Math.toRadians(180));
 
-    private final Pose stack2Pose = new Pose(40, 62, Math.toRadians(180));
-    private final Pose eatStack2Pose = new Pose(15, 62, Math.toRadians(180));
+    private final Pose overflowPose = new Pose(8, 18, Math.toRadians(180));
+    private final Pose shoot4Pose = new Pose(56, 8.5, Math.toRadians(180));
 
-    private final Pose overflowPose = new Pose(15, 62, Math.toRadians(155));
-    private final Pose endPose = new Pose(59, 101, Math.toRadians(145));
-    private final Pose toOverflowPose = new Pose(45, 62, Math.toRadians(180));
+    private final Pose endPose = new Pose(38, 32, Math.toRadians(90));
 
-    private PathChain pathToShoot;
-    private PathChain pathToStack2;
-    private PathChain pathToCollectStack2;
-    private PathChain pathToExitStack2;
-    private PathChain pathFromStack2ToShoot;
-    private PathChain pathToOffsetOverflow;
-    private PathChain pathToGate;
-    private PathChain pathToShoot3;
-    private PathChain pathToGate2;
-    private PathChain pathToShoot4;
-    private PathChain pathToStack1;
+    private PathChain pathToWallStack;
+    private PathChain pathFromWallStackToShoot2;
+    private PathChain pathToStack3;
+    private PathChain pathToStack3Collect;
+    private PathChain pathFromStack3CollectToShoot3;
+    private PathChain pathToOverflow;
+    private PathChain pathFromOverflowToShoot4;
     private PathChain pathToEnd;
 
     @Override
@@ -120,10 +103,10 @@ public class GateAuto15Blue extends OpMode {
         clearBulkCache();
 
         PoseStorage.setBlue();
-        PoseStorage.setPose(startPose);
+        PoseStorage.setPose(shootPose);
 
         follower = Constants.createFollower(hardwareMap);
-        follower.setStartingPose(startPose);
+        follower.setStartingPose(shootPose);
 
         buildPaths();
 
@@ -143,26 +126,19 @@ public class GateAuto15Blue extends OpMode {
         outtake.stopOuttake();
         turret.setForward();
 
-        resetVelocityEstimator(startPose);
+        currentDistanceCM = distanceToGoalCM(shootPose);
 
-        currentDistanceCM = distanceToGoalCM(startPose);
-
-        telemetry.addLine("Gate Blue Initialised");
+        telemetry.addLine("Far Zone Auto Blue Initialised");
         telemetry.addData("Alliance Stored", PoseStorage.lastAlliance);
         telemetry.addData("Bulk Caching", "MANUAL");
-        telemetry.addData("Path Completion", "Pedro follow completion");
-        telemetry.addData("Stack 2 Return", "Exit stack first, then return to shoot");
-        telemetry.addData("Gate Wait", "Time OR intake.isBallReady()");
-        telemetry.addData(
-                "Overflow Pose",
-                "(%.1f, %.1f, %.1f deg)",
-                overflowPose.getX(),
-                overflowPose.getY(),
-                Math.toDegrees(overflowPose.getHeading())
+        telemetry.addData("Start/Shoot Pose", "(%.1f, %.1f, %.1f deg)",
+                shootPose.getX(),
+                shootPose.getY(),
+                Math.toDegrees(shootPose.getHeading())
         );
-        telemetry.addData("Gate Follow Timeout", "%.2f seconds", GATE_FOLLOW_TIMEOUT_SECONDS);
-        telemetry.addData("Return Intake", "%.2f seconds", RETURN_INTAKE_SECONDS);
-        telemetry.addData("Stack Exit Power", "%.2f", STACK_EXIT_PATH_POWER);
+        telemetry.addData("Far TPS", "%.0f", FAR_ZONE_TARGET_TPS);
+        telemetry.addData("Hood Distance CM", "%.0f", FAR_ZONE_HOOD_DISTANCE_CM);
+        telemetry.addData("Timed Intake", "%.2f seconds", TIMED_INTAKE_SECONDS);
         telemetry.update();
     }
 
@@ -180,7 +156,7 @@ public class GateAuto15Blue extends OpMode {
 
         intake.update();
 
-        telemetry.addLine("Gate Blue Init Loop");
+        telemetry.addLine("Far Zone Auto Blue Init Loop");
         telemetry.addData("Alliance Stored", PoseStorage.lastAlliance);
         telemetry.addData("Distance CM", "%.1f", currentDistanceCM);
         telemetry.addData("Target TPS", "%.0f", Outtake.target);
@@ -196,75 +172,55 @@ public class GateAuto15Blue extends OpMode {
         clearBulkCache();
 
         PoseStorage.setBlue();
-        PoseStorage.setPose(startPose);
+        PoseStorage.setPose(shootPose);
 
         robotHardware.reset_all();
         turret.setForward();
 
-        resetVelocityEstimator(startPose);
         updateGoalTarget();
 
-        currentDistanceCM = distanceToGoalCM(startPose);
+        currentDistanceCM = distanceToGoalCM(shootPose);
 
         outtakeEnabled = true;
         tpsTimeoutFired = false;
 
         stopIntakeAndBlock();
-        updateShooterRegressionAndPIDF(startPose);
+        updateFarZoneShooterAndPIDF(shootPose);
 
         schedule(
                 infinite(this::robotPeriodic),
 
                 sequential(
+                        shootCycle(),
+
+                        setFollowerPower(WALL_STACK_PATH_POWER),
+                        followTimedIntake(pathToWallStack),
+
                         setFollowerPower(SHOOT_PATH_POWER),
-                        followPath(pathToShoot),
+                        followTimedIntake(pathFromWallStackToShoot2),
 
                         shootCycle(),
 
-                        setFollowerPower(STACK_PATH_POWER),
-                        followCollect(pathToStack2),
+                        setFollowerPower(STACK_3_PATH_POWER),
+                        followCollect(pathToStack3),
 
-                        followCollect(pathToCollectStack2),
-
-                        setFollowerPower(STACK_EXIT_PATH_POWER),
-                        followReturnWithTimedIntake(pathToExitStack2),
+                        followTimedIntake(pathToStack3Collect),
 
                         setFollowerPower(SHOOT_PATH_POWER),
-                        followReturnWithTimedIntake(pathFromStack2ToShoot),
+                        followTimedIntake(pathFromStack3CollectToShoot3),
 
                         shootCycle(),
 
-                        followPath(pathToOffsetOverflow),
-
-                        setFollowerPower(GATE_PATH_POWER),
-                        followCollectWithTimeout(pathToGate, GATE_FOLLOW_TIMEOUT_SECONDS),
-
-                        gateCollectWait(),
+                        setFollowerPower(OVERFLOW_PATH_POWER),
+                        followCollect(pathToOverflow),
 
                         setFollowerPower(SHOOT_PATH_POWER),
-                        followReturnWithTimedIntake(pathToShoot3),
+                        followTimedIntake(pathFromOverflowToShoot4),
 
                         shootCycle(),
-
-                        followPath(pathToOffsetOverflow),
-
-                        setFollowerPower(GATE_PATH_POWER),
-                        followCollectWithTimeout(pathToGate2, GATE_FOLLOW_TIMEOUT_SECONDS),
-
-                        gateCollectWait(),
-
-                        setFollowerPower(SHOOT_PATH_POWER),
-                        followReturnWithTimedIntake(pathToShoot4),
-
-                        shootCycle(),
-
-                        setFollowerPower(STACK_PATH_POWER),
-                        followCollect(pathToStack1),
 
                         setFollowerPower(END_PATH_POWER),
-                        followReturnWithTimedIntake(pathToEnd),
-
-                        shootCycle(),
+                        followPath(pathToEnd),
 
                         instant(this::finishAuto)
                 )
@@ -279,7 +235,7 @@ public class GateAuto15Blue extends OpMode {
 
         Pose currentPose = follower.getPose();
 
-        telemetry.addLine("Gate Blue Auto");
+        telemetry.addLine("===== FAR ZONE AUTO BLUE =====");
 
         telemetry.addLine("State");
         telemetry.addData("Alliance Stored", PoseStorage.lastAlliance);
@@ -292,9 +248,6 @@ public class GateAuto15Blue extends OpMode {
         telemetry.addData("X", "%.2f", currentPose.getX());
         telemetry.addData("Y", "%.2f", currentPose.getY());
         telemetry.addData("Heading Deg", "%.1f", Math.toDegrees(currentPose.getHeading()));
-        telemetry.addData("Overflow X", "%.2f", overflowPose.getX());
-        telemetry.addData("Overflow Y", "%.2f", overflowPose.getY());
-        telemetry.addData("Overflow H Deg", "%.1f", Math.toDegrees(overflowPose.getHeading()));
 
         telemetry.addLine("Intake");
         telemetry.addData("Ball Ready", intake.isBallReady());
@@ -302,16 +255,10 @@ public class GateAuto15Blue extends OpMode {
         telemetry.addData("Detected Time", "%.2f", Intake.detectedTimeSeconds);
 
         telemetry.addLine("Shooter");
+        telemetry.addData("Far Target TPS", "%.0f", FAR_ZONE_TARGET_TPS);
         telemetry.addData("Target TPS", "%.0f", Outtake.target);
         telemetry.addData("Current TPS", "%.0f", Outtake.currentTPS);
         telemetry.addData("Effective TPS", "%.0f", Outtake.effectiveTPS);
-
-        telemetry.addLine("Velocity");
-        telemetry.addData("Raw X", "%.2f", rawVelocityX);
-        telemetry.addData("Raw Y", "%.2f", rawVelocityY);
-        telemetry.addData("Estimated X", "%.2f", estimatedVelocityX);
-        telemetry.addData("Estimated Y", "%.2f", estimatedVelocityY);
-        telemetry.addData("dt", "%.3f", velocityDt);
 
         telemetry.addLine("Turret");
         telemetry.addData("Velocity Comp", Turret.velocityCompensationActive);
@@ -361,110 +308,69 @@ public class GateAuto15Blue extends OpMode {
     }
 
     private void buildPaths() {
-        pathToShoot = follower.pathBuilder()
-                .addPath(new BezierLine(startPose, shootPose))
-                .setLinearHeadingInterpolation(
-                        startPose.getHeading(),
-                        shootPose.getHeading()
-                )
-                .build();
-
-        pathToStack2 = follower.pathBuilder()
-                .addPath(new BezierLine(shootPose, stack2Pose))
-                .setHeadingInterpolation(halfTangentHalfConstant(stack2Pose.getHeading()))
-                .build();
-
-        pathToCollectStack2 = follower.pathBuilder()
-                .addPath(new BezierLine(stack2Pose, eatStack2Pose))
-                .setLinearHeadingInterpolation(
-                        stack2Pose.getHeading(),
-                        eatStack2Pose.getHeading()
-                )
-                .build();
-
-        pathToExitStack2 = follower.pathBuilder()
-                .addPath(new BezierLine(eatStack2Pose, stack2Pose))
-                .setLinearHeadingInterpolation(
-                        eatStack2Pose.getHeading(),
-                        stack2Pose.getHeading()
-                )
-                .build();
-
-        pathFromStack2ToShoot = follower.pathBuilder()
-                .addPath(new BezierLine(stack2Pose, shootPose))
-                .setLinearHeadingInterpolation(
-                        stack2Pose.getHeading(),
-                        shootPose.getHeading()
-                )
-                .build();
-
-        pathToGate = follower.pathBuilder()
-                .addPath(new BezierLine(endPose, overflowPose))
+        pathToWallStack = follower.pathBuilder()
+                .addPath(new BezierLine(shootPose, wallStackPose))
                 .setLinearHeadingInterpolation(
                         shootPose.getHeading(),
+                        wallStackPose.getHeading()
+                )
+                .build();
+
+        pathFromWallStackToShoot2 = follower.pathBuilder()
+                .addPath(new BezierLine(wallStackPose, shoot2Pose))
+                .setLinearHeadingInterpolation(
+                        wallStackPose.getHeading(),
+                        shoot2Pose.getHeading()
+                )
+                .build();
+
+        pathToStack3 = follower.pathBuilder()
+                .addPath(new BezierLine(shoot2Pose, stack3Pose))
+                .setLinearHeadingInterpolation(
+                        shoot2Pose.getHeading(),
+                        stack3Pose.getHeading()
+                )
+                .build();
+
+        pathToStack3Collect = follower.pathBuilder()
+                .addPath(new BezierLine(stack3Pose, stack3CollectPose))
+                .setLinearHeadingInterpolation(
+                        stack3Pose.getHeading(),
+                        stack3CollectPose.getHeading()
+                )
+                .build();
+
+        pathFromStack3CollectToShoot3 = follower.pathBuilder()
+                .addPath(new BezierLine(stack3CollectPose, shoot3Pose))
+                .setLinearHeadingInterpolation(
+                        stack3CollectPose.getHeading(),
+                        shoot3Pose.getHeading()
+                )
+                .build();
+
+        pathToOverflow = follower.pathBuilder()
+                .addPath(new BezierLine(shoot3Pose, overflowPose))
+                .setLinearHeadingInterpolation(
+                        shoot3Pose.getHeading(),
                         overflowPose.getHeading()
                 )
                 .build();
 
-        pathToShoot3 = follower.pathBuilder()
-                .addPath(new BezierLine(overflowPose, shootPose))
+        pathFromOverflowToShoot4 = follower.pathBuilder()
+                .addPath(new BezierLine(overflowPose, shoot4Pose))
                 .setLinearHeadingInterpolation(
                         overflowPose.getHeading(),
-                        shootPose.getHeading()
+                        shoot4Pose.getHeading()
                 )
-                .build();
-
-        pathToGate2 = follower.pathBuilder()
-                .addPath(new BezierLine(endPose, overflowPose))
-                .setLinearHeadingInterpolation(
-                        shootPose.getHeading(),
-                        overflowPose.getHeading()
-                )
-                .build();
-
-        pathToShoot4 = follower.pathBuilder()
-                .addPath(new BezierLine(overflowPose, shootPose))
-                .setLinearHeadingInterpolation(
-                        overflowPose.getHeading(),
-                        shootPose.getHeading()
-                )
-                .build();
-
-        pathToStack1 = follower.pathBuilder()
-                .addPath(new BezierLine(shootPose, stack1Pose))
-                .setHeadingInterpolation(halfTangentHalfConstant(stack1Pose.getHeading()))
                 .build();
 
         pathToEnd = follower.pathBuilder()
-                .addPath(new BezierLine(stack1Pose, endPose))
+                .addPath(new BezierLine(shoot4Pose, endPose))
                 .setLinearHeadingInterpolation(
-                        stack1Pose.getHeading(),
+                        shoot4Pose.getHeading(),
                         endPose.getHeading()
                 )
                 .build();
-
-        pathToOffsetOverflow = follower.pathBuilder()
-                .addPath(new BezierLine(shootPose, toOverflowPose))
-                .setLinearHeadingInterpolation(
-                        shootPose.getHeading(),
-                        toOverflowPose.getHeading()
-                )
-                .build();
-    }
-
-    private HeadingInterpolator halfTangentHalfConstant(double finalHeadingRadians) {
-        return HeadingInterpolator.piecewise(
-                new HeadingInterpolator.PiecewiseNode(
-                        0.0,
-                        0.5,
-                        HeadingInterpolator.tangent
-                ),
-                new HeadingInterpolator.PiecewiseNode(
-                        0.5,
-                        1.0,
-                        HeadingInterpolator.constant(finalHeadingRadians)
-                )
-        );
     }
 
     private Command waitSeconds(double seconds) {
@@ -473,13 +379,6 @@ public class GateAuto15Blue extends OpMode {
 
     private Command followPath(PathChain path) {
         return follow(follower, path);
-    }
-
-    private Command followPathWithTimeout(PathChain path, double timeoutSeconds) {
-        return race(
-                follow(follower, path),
-                waitSeconds(timeoutSeconds)
-        );
     }
 
     private Command followCollect(PathChain path) {
@@ -498,23 +397,7 @@ public class GateAuto15Blue extends OpMode {
         );
     }
 
-    private Command followCollectWithTimeout(PathChain path, double timeoutSeconds) {
-        return parallel(
-                followPathWithTimeout(path, timeoutSeconds),
-
-                sequential(
-                        instant(() -> {
-                            robotHardware.block();
-                            intake.intake(
-                                    COLLECT_INTAKE_LEFT_POWER,
-                                    COLLECT_INTAKE_RIGHT_POWER
-                            );
-                        })
-                )
-        );
-    }
-
-    private Command followReturnWithTimedIntake(PathChain path) {
+    private Command followTimedIntake(PathChain path) {
         return parallel(
                 follow(follower, path),
 
@@ -527,7 +410,7 @@ public class GateAuto15Blue extends OpMode {
                             );
                         }),
 
-                        waitSeconds(RETURN_INTAKE_SECONDS),
+                        waitSeconds(TIMED_INTAKE_SECONDS),
 
                         instant(() -> {
                             intake.intakeStop();
@@ -541,33 +424,6 @@ public class GateAuto15Blue extends OpMode {
         return instant(() -> follower.setMaxPower(power));
     }
 
-    private Command gateCollectWait() {
-        return sequential(
-                instant(() -> {
-                    updateShooterRegressionAndPIDF(PoseStorage.currentPose);
-
-                    robotHardware.block();
-                    intake.intake(
-                            COLLECT_INTAKE_LEFT_POWER,
-                            COLLECT_INTAKE_RIGHT_POWER
-                    );
-                    intake.resetDetectionTimer();
-                }),
-
-                race(
-                        waitSeconds(GATE_COLLECT_SECONDS),
-                        waitUntil(intake::isBallReady)
-                ),
-
-                instant(() -> {
-                    updateShooterRegressionAndPIDF(PoseStorage.currentPose);
-
-                    intake.intakeStop();
-                    robotHardware.block();
-                })
-        );
-    }
-
     private Command shootCycle() {
         return sequential(
                 instant(() -> {
@@ -575,7 +431,7 @@ public class GateAuto15Blue extends OpMode {
 
                     outtakeEnabled = true;
 
-                    updateShooterRegressionAndPIDF(PoseStorage.currentPose);
+                    updateFarZoneShooterAndPIDF(PoseStorage.currentPose);
 
                     stopIntakeAndBlock();
                 }),
@@ -605,8 +461,6 @@ public class GateAuto15Blue extends OpMode {
         Pose currentPose = follower.getPose();
         PoseStorage.setPose(currentPose);
 
-        updateEstimatedVelocity(currentPose);
-
         updateGoalTarget();
 
         currentDistanceCM = distanceToGoalCM(currentPose);
@@ -615,12 +469,12 @@ public class GateAuto15Blue extends OpMode {
 
         turret.aimTurret(
                 currentPose,
-                estimatedVelocityX,
-                estimatedVelocityY
+                0.0,
+                0.0
         );
 
         if (outtakeEnabled) {
-            updateShooterRegressionAndPIDF(currentPose);
+            updateFarZoneShooterAndPIDF(currentPose);
         } else {
             outtake.stopOuttake();
             outtake.updatePIDF();
@@ -640,11 +494,11 @@ public class GateAuto15Blue extends OpMode {
         follower.setMaxPower(SHOOT_PATH_POWER);
     }
 
-    private void updateShooterRegressionAndPIDF(Pose robotPose) {
+    private void updateFarZoneShooterAndPIDF(Pose robotPose) {
         currentDistanceCM = distanceToGoalCM(robotPose);
 
-        outtake.linearRegression(currentDistanceCM);
-        robotHardware.linearHoodRegression(currentDistanceCM);
+        outtake.setFarZoneTargetTPS(FAR_ZONE_TARGET_TPS);
+        robotHardware.linearHoodRegression(FAR_ZONE_HOOD_DISTANCE_CM);
 
         outtake.updatePIDF();
     }
@@ -663,7 +517,7 @@ public class GateAuto15Blue extends OpMode {
     }
 
     private boolean shooterReadyOrTimedOut() {
-        updateShooterRegressionAndPIDF(PoseStorage.currentPose);
+        updateFarZoneShooterAndPIDF(PoseStorage.currentPose);
 
         if (isShooterAtSpeed()) {
             return true;
@@ -683,76 +537,20 @@ public class GateAuto15Blue extends OpMode {
     }
 
     private void holdShooterAndBlock() {
-        updateShooterRegressionAndPIDF(PoseStorage.currentPose);
+        updateFarZoneShooterAndPIDF(PoseStorage.currentPose);
 
         intake.intakeStop();
         robotHardware.block();
     }
 
     private void runShootFeed() {
-        updateShooterRegressionAndPIDF(PoseStorage.currentPose);
+        updateFarZoneShooterAndPIDF(PoseStorage.currentPose);
 
         robotHardware.release();
         intake.intake(
                 SHOOT_INTAKE_LEFT_POWER,
                 SHOOT_INTAKE_RIGHT_POWER
         );
-    }
-
-    private void resetVelocityEstimator(Pose pose) {
-        previousVelocityPose = pose;
-        previousVelocityTime = getRuntime();
-
-        rawVelocityX = 0.0;
-        rawVelocityY = 0.0;
-
-        estimatedVelocityX = 0.0;
-        estimatedVelocityY = 0.0;
-
-        velocityDt = 0.0;
-    }
-
-    private void updateEstimatedVelocity(Pose currentPose) {
-        if (!USE_POSE_DELTA_VELOCITY || currentPose == null) {
-            rawVelocityX = 0.0;
-            rawVelocityY = 0.0;
-
-            estimatedVelocityX = 0.0;
-            estimatedVelocityY = 0.0;
-
-            velocityDt = 0.0;
-
-            return;
-        }
-
-        double currentTime = getRuntime();
-
-        if (previousVelocityPose == null) {
-            resetVelocityEstimator(currentPose);
-            return;
-        }
-
-        velocityDt = currentTime - previousVelocityTime;
-
-        if (velocityDt <= 0.001) {
-            return;
-        }
-
-        rawVelocityX = (currentPose.getX() - previousVelocityPose.getX()) / velocityDt;
-        rawVelocityY = (currentPose.getY() - previousVelocityPose.getY()) / velocityDt;
-
-        double alpha = clamp01(VELOCITY_SMOOTHING_ALPHA);
-
-        estimatedVelocityX =
-                (alpha * rawVelocityX) +
-                        ((1.0 - alpha) * estimatedVelocityX);
-
-        estimatedVelocityY =
-                (alpha * rawVelocityY) +
-                        ((1.0 - alpha) * estimatedVelocityY);
-
-        previousVelocityPose = currentPose;
-        previousVelocityTime = currentTime;
     }
 
     private Pose getGoalPose() {
@@ -778,9 +576,5 @@ public class GateAuto15Blue extends OpMode {
         double dy = goalPose.getY() - robotPose.getY();
 
         return Math.hypot(dx, dy) * 2.54;
-    }
-
-    private double clamp01(double value) {
-        return Math.max(0.0, Math.min(1.0, value));
     }
 }

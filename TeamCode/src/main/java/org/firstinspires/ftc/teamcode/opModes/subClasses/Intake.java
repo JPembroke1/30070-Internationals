@@ -1,7 +1,5 @@
 package org.firstinspires.ftc.teamcode.opModes.subClasses;
 
-import androidx.annotation.NonNull;
-
 import com.bylazar.configurables.annotations.Configurable;
 import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorSimple;
@@ -23,11 +21,15 @@ public class Intake {
     public static double off = 0.000;
 
     public static double detectTimeSeconds = 0.2;
+    public static double farZoneFeederPower = 0.3;
 
     public static boolean rawSensorState = false;
     public static boolean ballDetected = false;
     public static double detectedTimeSeconds = 0.0;
     public static double lastLedPosition = 0.0;
+
+    public static double lastFrontPower = 0.0;
+    public static double lastBackPower = 0.0;
 
     private long detectionStartTime = -1;
 
@@ -52,6 +54,10 @@ public class Intake {
         detectedTimeSeconds = 0.0;
         rawSensorState = false;
         ballDetected = false;
+        lastLedPosition = red;
+
+        lastFrontPower = 0.0;
+        lastBackPower = 0.0;
 
         setLedRed();
         intakeStop();
@@ -66,7 +72,8 @@ public class Intake {
                 detectionStartTime = System.currentTimeMillis();
             }
 
-            detectedTimeSeconds = (System.currentTimeMillis() - detectionStartTime) / 1000.0;
+            detectedTimeSeconds =
+                    (System.currentTimeMillis() - detectionStartTime) / 1000.0;
 
             if (detectedTimeSeconds >= detectTimeSeconds) {
                 setLedGreen();
@@ -101,24 +108,46 @@ public class Intake {
     }
 
     public void setLedPosition(double position) {
-        double clippedPosition = Math.max(0.0, Math.min(1.0, position));
+        double clippedPosition = clamp(position, 0.0);
+
         led.setPosition(clippedPosition);
         lastLedPosition = clippedPosition;
     }
 
     public void intake(double powerFront, double powerBack) {
-        intakeMotorFront.setPower(powerFront);
-        intakeMotorBack.setPower(powerBack);
+        double clippedFront = clamp(powerFront, -1.0);
+        double clippedBack = clamp(powerBack, -1.0);
+
+        intakeMotorFront.setPower(clippedFront);
+        intakeMotorBack.setPower(clippedBack);
+
+        lastFrontPower = clippedFront;
+        lastBackPower = clippedBack;
+    }
+
+    public void setFeederPower(double power) {
+        double clippedPower = clamp(power, -1.0);
+        intake(clippedPower, clippedPower);
+    }
+
+    public void setFarZoneFeederPower() {
+        setFeederPower(farZoneFeederPower);
     }
 
     public void intakeStop() {
-        intakeMotorFront.setPower(0);
-        intakeMotorBack.setPower(0);
+        intakeMotorFront.setPower(0.0);
+        intakeMotorBack.setPower(0.0);
+
+        lastFrontPower = 0.0;
+        lastBackPower = 0.0;
     }
 
     public void resetDetectionTimer() {
         detectionStartTime = -1;
         detectedTimeSeconds = 0.0;
     }
-}
 
+    private double clamp(double v, double min) {
+        return Math.max(min, Math.min(1.0, v));
+    }
+}
