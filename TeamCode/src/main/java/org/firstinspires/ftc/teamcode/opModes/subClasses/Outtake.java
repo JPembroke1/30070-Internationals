@@ -19,7 +19,7 @@ public class Outtake {
     public static double regressionIntercept = 1700.0;
 
     public static double minTargetTPS = 1000.0;
-    public static double maxTargetTPS = 1900.0;
+    public static double maxTargetTPS = 1790.0;
 
     public static double farZoneTargetTPS = 2750.0;
     public static double farZoneMinTargetTPS = 1000.0;

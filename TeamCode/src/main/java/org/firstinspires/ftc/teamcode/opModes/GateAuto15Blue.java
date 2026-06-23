@@ -46,13 +46,13 @@ public class GateAuto15Blue extends OpMode {
     public static double GOAL_Y = 138.0;
 
     public static double SHOOT_SETTLE_SECONDS = 0.3;
-    public static double SHOOT_FEED_SECONDS = 0.4;
+    public static double SHOOT_FEED_SECONDS = 0.6;
     public static double GATE_COLLECT_SECONDS = 2.5;
 
     public static double RETURN_INTAKE_SECONDS = 0.35;
 
-    public static double SHOOT_INTAKE_LEFT_POWER = 1.0;
-    public static double SHOOT_INTAKE_RIGHT_POWER = 1.0;
+    public static double SHOOT_INTAKE_LEFT_POWER = 0.6;
+    public static double SHOOT_INTAKE_RIGHT_POWER = 0.6;
 
     public static double COLLECT_INTAKE_LEFT_POWER = 1.0;
     public static double COLLECT_INTAKE_RIGHT_POWER = 1.0;
@@ -95,7 +95,7 @@ public class GateAuto15Blue extends OpMode {
     private final Pose stack2Pose = new Pose(40, 62, Math.toRadians(180));
     private final Pose eatStack2Pose = new Pose(15, 62, Math.toRadians(180));
 
-    private final Pose overflowPose = new Pose(15, 62, Math.toRadians(155));
+    private final Pose overflowPose = new Pose(15, 62, Math.toRadians(158));
     private final Pose endPose = new Pose(59, 101, Math.toRadians(145));
     private final Pose toOverflowPose = new Pose(45, 62, Math.toRadians(180));
 
@@ -185,7 +185,6 @@ public class GateAuto15Blue extends OpMode {
         telemetry.addData("Distance CM", "%.1f", currentDistanceCM);
         telemetry.addData("Target TPS", "%.0f", Outtake.target);
         telemetry.addData("Current TPS", "%.0f", Outtake.currentTPS);
-        telemetry.addData("Ball Ready", intake.isBallReady());
         telemetry.update();
     }
 
@@ -296,10 +295,6 @@ public class GateAuto15Blue extends OpMode {
         telemetry.addData("Overflow Y", "%.2f", overflowPose.getY());
         telemetry.addData("Overflow H Deg", "%.1f", Math.toDegrees(overflowPose.getHeading()));
 
-        telemetry.addLine("Intake");
-        telemetry.addData("Ball Ready", intake.isBallReady());
-        telemetry.addData("Ball Detected", Intake.ballDetected);
-        telemetry.addData("Detected Time", "%.2f", Intake.detectedTimeSeconds);
 
         telemetry.addLine("Shooter");
         telemetry.addData("Target TPS", "%.0f", Outtake.target);
@@ -551,12 +546,11 @@ public class GateAuto15Blue extends OpMode {
                             COLLECT_INTAKE_LEFT_POWER,
                             COLLECT_INTAKE_RIGHT_POWER
                     );
-                    intake.resetDetectionTimer();
+
                 }),
 
                 race(
-                        waitSeconds(GATE_COLLECT_SECONDS),
-                        waitUntil(intake::isBallReady)
+                        waitSeconds(GATE_COLLECT_SECONDS)
                 ),
 
                 instant(() -> {

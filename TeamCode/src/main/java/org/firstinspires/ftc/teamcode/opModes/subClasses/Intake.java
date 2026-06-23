@@ -16,40 +16,15 @@ public class Intake {
     public DigitalChannel ballSensor;
     public ServoImplEx led;
 
-    public static double red = 0.300;
     public static double green = 0.500;
     public static double off = 0.000;
 
-    public static double detectTimeSeconds = 0.2;
-    public static double farZoneFeederPower = 0.3;
-
-    /*
-     * IMPORTANT:
-     * Most digital beam-break / proximity sensors are active-low.
-     *
-     * If raw sensor state is:
-     * true  = no ball
-     * false = ball detected
-     *
-     * then sensorTriggeredWhenLow should stay true.
-     *
-     * If your sensor is the opposite:
-     * true  = ball detected
-     * false = no ball
-     *
-     * then change this to false in Panels.
-     */
-    public static boolean sensorTriggeredWhenLow = true;
-
     public static boolean rawSensorState = false;
-    public static boolean ballDetected = false;
-    public static double detectedTimeSeconds = 0.0;
-    public static double lastLedPosition = 0.0;
+    public static boolean sensorTriggered = false;
 
+    public static double lastLedPosition = 0.0;
     public static double lastFrontPower = 0.0;
     public static double lastBackPower = 0.0;
-
-    private long detectionStartTime = -1;
 
     public void init(HardwareMap hardwareMap) {
         intakeMotorFront = hardwareMap.get(DcMotor.class, "intakeMotorFront");
@@ -68,62 +43,32 @@ public class Intake {
         led.setPwmRange(new PwmControl.PwmRange(500, 2500));
         led.setPwmEnable();
 
-        detectionStartTime = -1;
-        detectedTimeSeconds = 0.0;
-
         rawSensorState = ballSensor.getState();
-        ballDetected = false;
+        sensorTriggered = rawSensorState;
 
-        lastLedPosition = red;
+        lastLedPosition = off;
         lastFrontPower = 0.0;
         lastBackPower = 0.0;
 
-        setLedRed();
+        setLedOff();
         intakeStop();
     }
 
     public void update() {
         rawSensorState = ballSensor.getState();
-        ballDetected = isBallDetectedFromRaw(rawSensorState);
+        sensorTriggered = rawSensorState;
 
-        if (ballDetected) {
-            if (detectionStartTime < 0) {
-                detectionStartTime = System.currentTimeMillis();
-            }
-
-            detectedTimeSeconds = (System.currentTimeMillis() - detectionStartTime) / 1000.0;
-
-            if (detectedTimeSeconds >= detectTimeSeconds) {
-                setLedGreen();
-            } else {
-                setLedRed();
-            }
+        if (sensorTriggered) {
+            setLedGreen();
         } else {
-            detectionStartTime = -1;
-            detectedTimeSeconds = 0.0;
-            setLedRed();
+            setLedOff();
         }
     }
 
-    public boolean isBallDetected() {
+    public boolean isSensorTriggered() {
         rawSensorState = ballSensor.getState();
-        return isBallDetectedFromRaw(rawSensorState);
-    }
-
-    private boolean isBallDetectedFromRaw(boolean rawState) {
-        if (sensorTriggeredWhenLow) {
-            return !rawState;
-        } else {
-            return rawState;
-        }
-    }
-
-    public boolean isBallReady() {
-        return ballDetected && detectedTimeSeconds >= detectTimeSeconds;
-    }
-
-    public void setLedRed() {
-        setLedPosition(red);
+        sensorTriggered = rawSensorState;
+        return sensorTriggered;
     }
 
     public void setLedGreen() {
@@ -135,15 +80,15 @@ public class Intake {
     }
 
     public void setLedPosition(double position) {
-        double clippedPosition = clamp(position, 0.0);
+        double clippedPosition = clamp(position, 0.0, 1.0);
 
         led.setPosition(clippedPosition);
         lastLedPosition = clippedPosition;
     }
 
     public void intake(double powerFront, double powerBack) {
-        double clippedFront = clamp(powerFront, -1.0);
-        double clippedBack = clamp(powerBack, -1.0);
+        double clippedFront = clamp(powerFront, -1.0, 1.0);
+        double clippedBack = clamp(powerBack, -1.0, 1.0);
 
         intakeMotorFront.setPower(clippedFront);
         intakeMotorBack.setPower(clippedBack);
@@ -153,12 +98,12 @@ public class Intake {
     }
 
     public void setFeederPower(double power) {
-        double clippedPower = clamp(power, -1.0);
+        double clippedPower = clamp(power, -1.0, 1.0);
         intake(clippedPower, clippedPower);
     }
 
-    public void setFarZoneFeederPower() {
-        setFeederPower(farZoneFeederPower);
+    public void setFarZoneFeederPower(double power) {
+        setFeederPower(power);
     }
 
     public void intakeStop() {
@@ -169,14 +114,7 @@ public class Intake {
         lastBackPower = 0.0;
     }
 
-    public void resetDetectionTimer() {
-        detectionStartTime = -1;
-        detectedTimeSeconds = 0.0;
-        ballDetected = false;
-        setLedRed();
-    }
-
-    private double clamp(double value, double min) {
-        return Math.max(min, Math.min(1.0, value));
+    private double clamp(double value, double min, double max) {
+        return Math.max(min, Math.min(max, value));
     }
 }

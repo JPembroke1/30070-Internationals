@@ -123,8 +123,8 @@ public class CompetitionTeleOp extends OpMode {
 
     public static double SHOOT_TRIGGER_THRESHOLD = 0.2;
 
-    public static double SHOOT_INTAKE_LEFT_POWER = 0.5;
-    public static double SHOOT_INTAKE_RIGHT_POWER = 0.5;
+    public static double SHOOT_INTAKE_LEFT_POWER = 0.6;
+    public static double SHOOT_INTAKE_RIGHT_POWER = 0.6;
 
     public static double COLLECT_INTAKE_LEFT_POWER = 1.0;
     public static double COLLECT_INTAKE_RIGHT_POWER = 1.0;
@@ -496,9 +496,9 @@ public class CompetitionTeleOp extends OpMode {
     }
 
     private void driveRobot() {
-        double forward = gamepad1.left_stick_y * DRIVE_SPEED;
-        double strafe = gamepad1.left_stick_x * DRIVE_SPEED;
-        double turn = gamepad1.right_stick_x * DRIVE_SPEED;
+        double forward = -gamepad1.left_stick_y * DRIVE_SPEED;
+        double strafe = -gamepad1.left_stick_x * DRIVE_SPEED;
+        double turn = -gamepad1.right_stick_x * DRIVE_SPEED;
 
         if (isCollectIntakeActive()) {
             turn *= INTAKE_TURN_MULTIPLIER;

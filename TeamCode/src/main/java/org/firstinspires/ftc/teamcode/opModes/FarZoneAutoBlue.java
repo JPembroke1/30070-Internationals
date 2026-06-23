@@ -44,7 +44,7 @@ public class FarZoneAutoBlue extends OpMode {
     public static double GOAL_X = 6.0;
     public static double GOAL_Y = 138.0;
 
-    public static double FAR_ZONE_TARGET_TPS = 2750.0;
+    public static double FAR_ZONE_TARGET_TPS = 3400.0;
     public static double FAR_ZONE_HOOD_DISTANCE_CM = 200.0;
 
     public static double SHOOT_SETTLE_SECONDS = 0.3;
@@ -64,24 +64,34 @@ public class FarZoneAutoBlue extends OpMode {
     public static double OVERFLOW_PATH_POWER = 0.65;
     public static double END_PATH_POWER = 1.0;
 
-    public static double TPS_SPINUP_TIMEOUT = 0.3;
-    public static double TPS_READY_THRESHOLD = 0.95;
+    /*
+     * IMPORTANT:
+     * The old value of 0.3 seconds was allowing the auto to continue
+     * before the shooter had actually reached target speed.
+     */
+    public static boolean REQUIRE_TPS_BEFORE_SHOOT = true;
+    public static double TPS_SPINUP_TIMEOUT = 2.0;
+    public static double TPS_READY_THRESHOLD = 0.97;
+    public static double TPS_READY_STABLE_SECONDS = 0.15;
 
     private double tpsWaitStartTime = 0.0;
+    private double shooterReadyStartTime = -1.0;
+
     private boolean tpsTimeoutFired = false;
+    private boolean shooterStableReady = false;
     private boolean outtakeEnabled = true;
 
     private double currentDistanceCM = 0.0;
 
     private final Pose shootPose = new Pose(56, 8.5, Math.toRadians(180));
-    private final Pose wallStackPose = new Pose(56, 86, Math.toRadians(180));
+    private final Pose wallStackPose = new Pose(12, 8.5, Math.toRadians(180));
     private final Pose shoot2Pose = new Pose(56, 8.5, Math.toRadians(180));
 
     private final Pose stack3Pose = new Pose(45, 35, Math.toRadians(180));
-    private final Pose stack3CollectPose = new Pose(7, 35, Math.toRadians(180));
+    private final Pose stack3CollectPose = new Pose(13, 35, Math.toRadians(180));
     private final Pose shoot3Pose = new Pose(56, 8.5, Math.toRadians(180));
 
-    private final Pose overflowPose = new Pose(8, 18, Math.toRadians(180));
+    private final Pose overflowPose = new Pose(12, 18, Math.toRadians(180));
     private final Pose shoot4Pose = new Pose(56, 8.5, Math.toRadians(180));
 
     private final Pose endPose = new Pose(38, 32, Math.toRadians(90));
@@ -131,13 +141,19 @@ public class FarZoneAutoBlue extends OpMode {
         telemetry.addLine("Far Zone Auto Blue Initialised");
         telemetry.addData("Alliance Stored", PoseStorage.lastAlliance);
         telemetry.addData("Bulk Caching", "MANUAL");
-        telemetry.addData("Start/Shoot Pose", "(%.1f, %.1f, %.1f deg)",
+        telemetry.addData(
+                "Start/Shoot Pose",
+                "(%.1f, %.1f, %.1f deg)",
                 shootPose.getX(),
                 shootPose.getY(),
                 Math.toDegrees(shootPose.getHeading())
         );
         telemetry.addData("Far TPS", "%.0f", FAR_ZONE_TARGET_TPS);
         telemetry.addData("Hood Distance CM", "%.0f", FAR_ZONE_HOOD_DISTANCE_CM);
+        telemetry.addData("TPS Required", REQUIRE_TPS_BEFORE_SHOOT);
+        telemetry.addData("TPS Ready Threshold", "%.2f", TPS_READY_THRESHOLD);
+        telemetry.addData("TPS Stable Seconds", "%.2f", TPS_READY_STABLE_SECONDS);
+        telemetry.addData("TPS Timeout", "%.2f", TPS_SPINUP_TIMEOUT);
         telemetry.addData("Timed Intake", "%.2f seconds", TIMED_INTAKE_SECONDS);
         telemetry.update();
     }
@@ -161,7 +177,6 @@ public class FarZoneAutoBlue extends OpMode {
         telemetry.addData("Distance CM", "%.1f", currentDistanceCM);
         telemetry.addData("Target TPS", "%.0f", Outtake.target);
         telemetry.addData("Current TPS", "%.0f", Outtake.currentTPS);
-        telemetry.addData("Ball Ready", intake.isBallReady());
         telemetry.update();
     }
 
@@ -183,6 +198,8 @@ public class FarZoneAutoBlue extends OpMode {
 
         outtakeEnabled = true;
         tpsTimeoutFired = false;
+        shooterStableReady = false;
+        shooterReadyStartTime = -1.0;
 
         stopIntakeAndBlock();
         updateFarZoneShooterAndPIDF(shootPose);
@@ -240,8 +257,10 @@ public class FarZoneAutoBlue extends OpMode {
         telemetry.addLine("State");
         telemetry.addData("Alliance Stored", PoseStorage.lastAlliance);
         telemetry.addData("Outtake Enabled", outtakeEnabled);
+        telemetry.addData("Require TPS", REQUIRE_TPS_BEFORE_SHOOT);
         telemetry.addData("TPS Timeout Fired", tpsTimeoutFired);
         telemetry.addData("At Speed", outtake.isAtSpeed(TPS_READY_THRESHOLD));
+        telemetry.addData("Stable Ready", shooterStableReady);
         telemetry.addData("Distance CM", "%.1f", currentDistanceCM);
 
         telemetry.addLine("Pose");
@@ -249,16 +268,13 @@ public class FarZoneAutoBlue extends OpMode {
         telemetry.addData("Y", "%.2f", currentPose.getY());
         telemetry.addData("Heading Deg", "%.1f", Math.toDegrees(currentPose.getHeading()));
 
-        telemetry.addLine("Intake");
-        telemetry.addData("Ball Ready", intake.isBallReady());
-        telemetry.addData("Ball Detected", Intake.ballDetected);
-        telemetry.addData("Detected Time", "%.2f", Intake.detectedTimeSeconds);
-
         telemetry.addLine("Shooter");
         telemetry.addData("Far Target TPS", "%.0f", FAR_ZONE_TARGET_TPS);
         telemetry.addData("Target TPS", "%.0f", Outtake.target);
         telemetry.addData("Current TPS", "%.0f", Outtake.currentTPS);
         telemetry.addData("Effective TPS", "%.0f", Outtake.effectiveTPS);
+        telemetry.addData("Ready Threshold", "%.2f", TPS_READY_THRESHOLD);
+        telemetry.addData("Stable Seconds", "%.2f", TPS_READY_STABLE_SECONDS);
 
         telemetry.addLine("Turret");
         telemetry.addData("Velocity Comp", Turret.velocityCompensationActive);
@@ -430,6 +446,7 @@ public class FarZoneAutoBlue extends OpMode {
                     startTpsWait();
 
                     outtakeEnabled = true;
+                    shooterStableReady = false;
 
                     updateFarZoneShooterAndPIDF(PoseStorage.currentPose);
 
@@ -437,7 +454,7 @@ public class FarZoneAutoBlue extends OpMode {
                 }),
 
                 race(
-                        waitUntil(this::shooterReadyOrTimedOut),
+                        waitUntil(this::shooterStableReadyOrAllowedToContinue),
                         infinite(this::holdShooterAndBlock)
                 ),
 
@@ -448,7 +465,7 @@ public class FarZoneAutoBlue extends OpMode {
 
                 race(
                         waitSeconds(SHOOT_FEED_SECONDS),
-                        infinite(this::runShootFeed)
+                        infinite(this::runShootFeedOnlyWhenReady)
                 ),
 
                 instant(this::stopIntakeAndBlock)
@@ -505,7 +522,10 @@ public class FarZoneAutoBlue extends OpMode {
 
     private void startTpsWait() {
         tpsWaitStartTime = getRuntime();
+        shooterReadyStartTime = -1.0;
+
         tpsTimeoutFired = false;
+        shooterStableReady = false;
     }
 
     private boolean hasSpinUpTimedOut() {
@@ -516,16 +536,36 @@ public class FarZoneAutoBlue extends OpMode {
         return outtake.isAtSpeed(TPS_READY_THRESHOLD);
     }
 
-    private boolean shooterReadyOrTimedOut() {
+    private boolean isShooterStableAtSpeed() {
         updateFarZoneShooterAndPIDF(PoseStorage.currentPose);
 
-        if (isShooterAtSpeed()) {
+        if (!isShooterAtSpeed()) {
+            shooterReadyStartTime = -1.0;
+            shooterStableReady = false;
+            return false;
+        }
+
+        if (shooterReadyStartTime < 0.0) {
+            shooterReadyStartTime = getRuntime();
+            shooterStableReady = false;
+            return false;
+        }
+
+        shooterStableReady = (getRuntime() - shooterReadyStartTime) >= TPS_READY_STABLE_SECONDS;
+        return shooterStableReady;
+    }
+
+    private boolean shooterStableReadyOrAllowedToContinue() {
+        if (isShooterStableAtSpeed()) {
             return true;
         }
 
         if (hasSpinUpTimedOut()) {
             tpsTimeoutFired = true;
-            return true;
+
+            if (!REQUIRE_TPS_BEFORE_SHOOT) {
+                return true;
+            }
         }
 
         return false;
@@ -543,10 +583,17 @@ public class FarZoneAutoBlue extends OpMode {
         robotHardware.block();
     }
 
-    private void runShootFeed() {
+    private void runShootFeedOnlyWhenReady() {
         updateFarZoneShooterAndPIDF(PoseStorage.currentPose);
 
+        if (!isShooterAtSpeed()) {
+            intake.intakeStop();
+            robotHardware.block();
+            return;
+        }
+
         robotHardware.release();
+
         intake.intake(
                 SHOOT_INTAKE_LEFT_POWER,
                 SHOOT_INTAKE_RIGHT_POWER

@@ -33,7 +33,7 @@ public class Turret {
     // Do not treat AIM_OFFSET as degrees or radians.
     // ─────────────────────────────────────────────────────────────────────────
 
-    public static double AIM_OFFSET = -0.05;
+    public static double AIM_OFFSET = 0.0;
     public static double AIM_GAIN = 1.0;
 
     // ─────────────────────────────────────────────────────────────────────────
