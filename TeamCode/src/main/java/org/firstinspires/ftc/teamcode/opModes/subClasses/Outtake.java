@@ -27,7 +27,16 @@ public class Outtake {
 
     public static double MAX_REGRESSION_DISTANCE_CM = 200.0;
 
+    /*
+     * Normal / close-zone feedforward.
+     */
     public static double kV = 0.00039;
+
+    /*
+     * Far-zone feedforward.
+     */
+    public static double farZoneKV = 0.0005;
+
     public static double kS = 0.06;
     public static double kP = 0.0007;
     public static double kI = 0.0;
@@ -36,15 +45,40 @@ public class Outtake {
     public static double minPower = 0.0;
     public static double maxPower = 1.0;
 
+    /*
+     * Normal / close-zone power limiting.
+     */
     public static double ERROR_POWER_LIMIT_BASE = 0.55;
     public static double ERROR_POWER_LIMIT_GAIN = 0.00087;
-
     public static double ERROR_POWER_LIMIT_MIN = 0.45;
     public static double ERROR_POWER_LIMIT_MAX = 0.95;
     public static double ERROR_POWER_LIMIT_ERROR_CAP = 1000.0;
 
+    /*
+     * Far-zone power limiting.
+     *
+     * These are separate so far-zone spin-up can be more aggressive
+     * without affecting close-zone shooting.
+     */
+    public static double farZoneErrorPowerLimitBase = 0.65;
+    public static double farZoneErrorPowerLimitGain = 0.00100;
+    public static double farZoneErrorPowerLimitMin = 0.55;
+    public static double farZoneErrorPowerLimitMax = 1.00;
+    public static double farZoneErrorPowerLimitErrorCap = 1200.0;
+
+    /*
+     * Normal / close-zone ramping.
+     */
     public static double RAMP_UP_PER_SECOND = 2.5;
     public static double RAMP_DOWN_PER_SECOND = 6.0;
+
+    /*
+     * Far-zone ramping.
+     *
+     * Higher ramp-up helps the shooter reach far-zone TPS faster.
+     */
+    public static double farZoneRampUpPerSecond = 8.0;
+    public static double farZoneRampDownPerSecond = 8.0;
 
     public static double MIN_VALID_TPS = 50.0;
     public static double MAX_ERROR_FOR_PID = 500.0;
@@ -55,6 +89,16 @@ public class Outtake {
     public static double leftVelocity = 0.0;
     public static double rightVelocity = 0.0;
     public static double effectiveTPS = 0.0;
+
+    public static double activeKV = 0.0;
+    public static double activeRampUpPerSecond = 0.0;
+    public static double activeRampDownPerSecond = 0.0;
+    public static double activePowerLimit = 0.0;
+
+    public static double feedForwardOutput = 0.0;
+    public static double requestedPowerOutput = 0.0;
+    public static double appliedPowerOutput = 0.0;
+    public static double shooterError = 0.0;
 
     public static boolean bothSensorsInvalid = false;
     public static boolean usingFarZoneTarget = false;
@@ -136,14 +180,23 @@ public class Outtake {
 
         pidInitialised = true;
 
+        activeKV = getActiveKV();
+        activeRampUpPerSecond = getActiveRampUpPerSecond();
+        activeRampDownPerSecond = getActiveRampDownPerSecond();
+
         double rawError = target - effectiveTPS;
         double error = clamp(rawError, -MAX_ERROR_FOR_PID, MAX_ERROR_FOR_PID);
+
+        shooterError = rawError;
 
         integral += error * dt;
 
         double derivative = (error - previousError) / dt;
 
-        double feedForward = (kV * target) + kS;
+        double feedForward =
+                (activeKV * target) + kS;
+
+        feedForwardOutput = feedForward;
 
         double requestedOutput =
                 feedForward
@@ -153,7 +206,10 @@ public class Outtake {
 
         double powerLimit = calculatePowerLimitFromError(rawError);
 
+        activePowerLimit = powerLimit;
+
         requestedOutput = clamp(requestedOutput, minPower, powerLimit);
+        requestedPowerOutput = requestedOutput;
 
         applyRamp(requestedOutput, dt, powerLimit);
 
@@ -161,14 +217,67 @@ public class Outtake {
         previousUpdateTime = now;
     }
 
-    private double calculatePowerLimitFromError(double error) {
-        double cappedError = clamp(Math.abs(error), 0.0, ERROR_POWER_LIMIT_ERROR_CAP);
+    private double getActiveKV() {
+        if (usingFarZoneTarget) {
+            return farZoneKV;
+        }
 
-        double limit =
+        return kV;
+    }
+
+    private double getActiveRampUpPerSecond() {
+        if (usingFarZoneTarget) {
+            return farZoneRampUpPerSecond;
+        }
+
+        return RAMP_UP_PER_SECOND;
+    }
+
+    private double getActiveRampDownPerSecond() {
+        if (usingFarZoneTarget) {
+            return farZoneRampDownPerSecond;
+        }
+
+        return RAMP_DOWN_PER_SECOND;
+    }
+
+    private double calculatePowerLimitFromError(double error) {
+        double cappedError;
+        double limit;
+
+        if (usingFarZoneTarget) {
+            cappedError = clamp(
+                    Math.abs(error),
+                    0.0,
+                    farZoneErrorPowerLimitErrorCap
+            );
+
+            limit =
+                    farZoneErrorPowerLimitBase
+                            + (cappedError * farZoneErrorPowerLimitGain);
+
+            return clamp(
+                    limit,
+                    farZoneErrorPowerLimitMin,
+                    farZoneErrorPowerLimitMax
+            );
+        }
+
+        cappedError = clamp(
+                Math.abs(error),
+                0.0,
+                ERROR_POWER_LIMIT_ERROR_CAP
+        );
+
+        limit =
                 ERROR_POWER_LIMIT_BASE
                         + (cappedError * ERROR_POWER_LIMIT_GAIN);
 
-        return clamp(limit, ERROR_POWER_LIMIT_MIN, ERROR_POWER_LIMIT_MAX);
+        return clamp(
+                limit,
+                ERROR_POWER_LIMIT_MIN,
+                ERROR_POWER_LIMIT_MAX
+        );
     }
 
     private void applyRamp(double requested, double dt, double limit) {
@@ -176,11 +285,13 @@ public class Outtake {
 
         double maxStep =
                 (diff > 0.0)
-                        ? RAMP_UP_PER_SECOND * dt
-                        : RAMP_DOWN_PER_SECOND * dt;
+                        ? activeRampUpPerSecond * dt
+                        : activeRampDownPerSecond * dt;
 
         appliedPower += clamp(diff, -maxStep, maxStep);
         appliedPower = clamp(appliedPower, minPower, limit);
+
+        appliedPowerOutput = appliedPower;
 
         setShooterPower(appliedPower);
     }
@@ -199,6 +310,17 @@ public class Outtake {
         target = 0.0;
         requestedTarget = 0.0;
         appliedPower = 0.0;
+
+        activeKV = 0.0;
+        activeRampUpPerSecond = 0.0;
+        activeRampDownPerSecond = 0.0;
+        activePowerLimit = 0.0;
+
+        feedForwardOutput = 0.0;
+        requestedPowerOutput = 0.0;
+        appliedPowerOutput = 0.0;
+        shooterError = 0.0;
+
         usingFarZoneTarget = false;
 
         setShooterPower(0.0);
@@ -236,7 +358,7 @@ public class Outtake {
         return System.nanoTime() / 1_000_000_000.0;
     }
 
-    private double clamp(double v, double min, double max) {
-        return Math.max(min, Math.min(max, v));
+    private double clamp(double value, double min, double max) {
+        return Math.max(min, Math.min(max, value));
     }
 }
